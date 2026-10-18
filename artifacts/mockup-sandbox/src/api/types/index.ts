@@ -159,11 +159,15 @@ export interface ShiftLiability {
   }> | null;
 }
 
+export type OperationWorkflowKind = "sal_day" | "legacy_sales" | "unknown";
+
 export interface Operation {
   id: string;
   /** Human ID, e.g. "OPS-2401". */
   publicId: string;
   moduleKey: ModuleKey;
+  /** Server-verified workflow; missing older responses must fail closed. */
+  workflowKind?: OperationWorkflowKind;
   sourceModule?: string | null;
   sourceId?: string | null;
   status: OperationStatus;
