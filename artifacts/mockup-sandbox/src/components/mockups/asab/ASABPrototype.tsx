@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Operation as ApiOperation } from "../../../api/types";
 import { queryKeys } from "../../../api/queries/keys";
 import { getSalesActionPolicy, hasSalesReconciliationEvidence, isPkg6SalesReport, runSalesAction, runSalesBulkApproval, salesBulkApprovalIds, SALES_RETURN_HINT } from "./salesActionGuards";
-import { headLegacyBulkIds } from "./headReviewGuards";
+import { headLegacyBulkIds, runHeadFinalApproval } from "./headReviewGuards";
 import { toast } from "sonner";
 import { useState, useEffect, useMemo, ReactNode, createContext, useContext, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import {
@@ -266,7 +266,7 @@ import {
   useExportShifts,
 } from "../../../api/queries";
 import { isApiError } from "../../../api/errors";
-import { canRunAccountantOperations, chooseGrantedRole, grantedRoleKeys, pageForRole, prototypeRoles, purgeFinancialQueries } from "../../../auth/roleAccess";
+import { canRunAccountantOperations, chooseGrantedRole, grantedRoleKeys, pageForRole, prototypeRoles, purgeFinancialQueries, financialAccessFingerprint, financialAccessGeneration, registerFinancialRequest } from "../../../auth/roleAccess";
 import { historyBranchOptions, historyPageTarget } from "../../../api/queries/shifts";
 import { formatShiftHalalas, formatShiftSalesTotal, getShiftCountEvidence, getShiftStatusDisplay } from "./shiftCountEvidence";
 import { api, APP_BASE_URL } from "../../../api/client";
@@ -317,6 +317,7 @@ type ModuleKey = "sales" | "expenses" | "purchases" | "inventory" | "shifts" | "
 
 interface Op {
   id: string;
+  operationId?: string; // Canonical API identity; id remains the existing display/reference key.
   branch: string;
   moduleKey: ModuleKey;
   moduleLabel: string;
@@ -325,6 +326,7 @@ interface Op {
   match: MatchStatus;
   attachments: number;
   status: OpStatus;
+  workflowKind?: ApiOperation["workflowKind"];
   reportReview?: ApiOperation["reportReview"];
   diff?: string;
   // Sales matching breakdown (T04 §8) — null until reconciled
@@ -2287,6 +2289,8 @@ function mapApiOpToOp(a: any): Op {
   };
   return {
     id: a.publicId ?? a.id ?? "",
+    operationId: typeof a.id === "string" && a.id.trim() ? a.id : undefined,
+    workflowKind: a.workflowKind ?? "unknown",
     reportReview: a.reportReview,
     // Display the name only — the backend now always sends branchName ("" for a
     // deleted branch). branchId is kept below for filtering/links, never shown as
@@ -17002,6 +17006,21 @@ export function ASABPrototype() {
   currentSalesOps.current = ops;
   const currentSalesRole = useRef(appState.role);
   currentSalesRole.current = currentRole;
+  const headActionLock = useRef(false);
+  const headAccess = useRef("");
+  headAccess.current = switchingRole ? "" : `${currentRole}:${financialAccessFingerprint(user)}`;
+  const headMounted = useRef(true);
+  useEffect(() => { headMounted.current = true; return () => { headMounted.current = false; }; }, []);
+  const loadFreshHeadDetail = async (id:string) => {
+    const access = headAccess.current;
+    const request = registerFinancialRequest(salesQueryClient);
+    try {
+      const response = await api.get<ApiOperation>(`/operations/${id}`, {signal:request.signal});
+      if (!headMounted.current || !access || headAccess.current !== access || request.signal.aborted ||
+          request.generation !== financialAccessGeneration(salesQueryClient)) return undefined;
+      return response.data;
+    } finally { request.release(); }
+  };
   const salesDetailFor = (op: { id: string }) => salesQueryClient.getQueryData<ApiOperation>(queryKeys.operation(op.id));
   const salesContextFor = (id: string) => {
     const operation = currentSalesOps.current.find(op => op.id === id);
@@ -17039,16 +17058,23 @@ export function ASABPrototype() {
       rejectMut.mutate({ id, reason });
     });
   };
-  const finalApproveOp = (id:string, conditional?: { note: string }) => {
-    setOps(p=>p.map(o=>
-      o.id===id && o.status==="approved"
-        ? { ...o, status:"final-approved" as OpStatus,
-            finalApprovedBy: "رئيس الحسابات",
-            finalApprovedAt: now() }
-        : o
-    ));
-    // B-H / section أ #8: carry the conditional-approval note through to the API instead of dropping it.
-    finalMut.mutate({ id, isConditional: !!conditional, conditionalNote: conditional?.note });
+  const finalApproveOp = async (id:string, conditional?: { note: string }) => {
+    const operation = currentSalesOps.current.find(op => op.id === id);
+    const access = headAccess.current;
+    const generation = financialAccessGeneration(salesQueryClient);
+    try {
+      const canonical = operation ? {...operation,id:operation.operationId ?? operation.id} : undefined;
+      await runHeadFinalApproval(canonical, currentSalesRole.current, loadFreshHeadDetail, async operationId => {
+        if (!headMounted.current || !access || headAccess.current !== access || currentSalesRole.current !== "head" ||
+            generation !== financialAccessGeneration(salesQueryClient)) return;
+        const result = await finalMut.mutateAsync({ id:operationId, isConditional:!!conditional, conditionalNote:conditional?.note });
+        if (!headMounted.current || headAccess.current !== access || generation !== financialAccessGeneration(salesQueryClient)) return;
+        // Adopt only confirmed server state; errors leave the displayed status unchanged.
+        if (result.id === operationId && result.status === "final-approved") setOps(p=>p.map(o=>
+          o.id === id ? {...o,status:"final-approved",finalApprovedBy:"رئيس الحسابات",finalApprovedAt:now()} : o));
+        void salesQueryClient.invalidateQueries({queryKey:["platform","head"]});
+      }, headActionLock);
+    } catch { /* Existing mutation hook reports 403/409; no optimistic success. */ }
   };
   const bulkApprove = (ids:string[]) => {
     const eligible = salesBulkApprovalIds(currentSalesOps.current, ids.filter(id =>
@@ -17056,6 +17082,8 @@ export function ASABPrototype() {
     const approved = headLegacyBulkIds(currentSalesOps.current, ids.filter(id =>
       currentSalesOps.current.find(op => op.id === id)?.status === "approved"), currentSalesRole.current, salesDetailFor);
     const set = new Set([...eligible, ...approved]);
+    // Validate the whole selection before splitting statuses or changing local state.
+    if (ids.length === 0 || set.size !== new Set(ids).size) return;
     const ts = now();
     // Partition ids by current status so we send the right call per group.
     const pendingIds:string[] = [];

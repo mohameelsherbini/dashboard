@@ -14,6 +14,7 @@ export type COp = {
   statusLabelAr?:string; matchLabelAr?:string;
   originLabelAr?:string; originIcon?:string;
   origin?:ApiOperation["origin"]; sourceId?:ApiOperation["sourceId"];
+  workflowKind?:ApiOperation["workflowKind"];
   reportReview?:ApiOperation["reportReview"];
   payload?:ApiOperation["payload"];
   stage?:{ key:string; step:number; icon:string; labelAr:string; labelShortAr:string };
@@ -56,6 +57,7 @@ export function apiOpToCOp(op: ApiOperation, brands: readonly { name:string; col
     originIcon: op.originIcon,
     origin: op.origin,
     sourceId: op.sourceId,
+    workflowKind: ["sal_day", "legacy_sales"].includes(op.workflowKind ?? "") ? op.workflowKind : "unknown",
     reportReview: op.reportReview,
     // Keep server evidence as received: do not derive a count state or fill money.
     payload: op.payload,

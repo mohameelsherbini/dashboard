@@ -5,6 +5,7 @@ export type SalesGuardOperation = {
   moduleKey?: string | null;
   status?: string | null;
   reportReview?: unknown;
+  workflowKind?: unknown;
   reconciliation?: { isLocked?: boolean } | null;
 };
 export type SalesActionContext = {
@@ -23,9 +24,9 @@ export const SALES_RETURN_HINT = {
 const isSales = (op?: SalesGuardOperation | null) => (op?.moduleKey ?? op?.module) === "sales";
 const isShf = (op?: SalesGuardOperation | null) => op?.moduleKey === "shifts" || op?.module === "shifts";
 
-/** Use only the API's review evidence, never an origin, ID prefix or money value. */
+/** Positive server classification; conflicting review evidence stays protected. */
 export function isPkg6SalesReport(op?: SalesGuardOperation | null): boolean {
-  return isSales(op) && op?.reportReview != null;
+  return isSales(op) && (op?.workflowKind === "sal_day" || op?.reportReview != null);
 }
 
 export function getSalesActionPolicy({ operation, detail, role, locked, financialDataReady }: SalesActionContext) {
@@ -33,10 +34,12 @@ export function getSalesActionPolicy({ operation, detail, role, locked, financia
   const shf = isShf(operation) || isShf(detail);
   // A null/absent detail review must not erase positive list evidence.
   const pkg6 = isPkg6SalesReport(operation) || isPkg6SalesReport(detail);
+  const verifiedLegacy = isSales(operation) && operation?.workflowKind === "legacy_sales" && !pkg6 &&
+    (!detail || (detail.id === operation?.id && isSales(detail) && detail.workflowKind === "legacy_sales"));
   const status = detail?.status ?? operation?.status;
   const isLocked = locked || detail?.reconciliation?.isLocked ||
     operation?.status === "final-approved" || detail?.status === "final-approved";
-  const editable = !!operation && sales && !pkg6 && !isLocked && financialDataReady !== false && role === "accountant" &&
+  const editable = !!operation && sales && verifiedLegacy && !isLocked && financialDataReady !== false && role === "accountant" &&
     (status === "pending" || status === "approved");
   const review = detail?.reportReview ?? operation?.reportReview;
   const stale = typeof review === "object" && review !== null && "stale_members" in review
@@ -48,12 +51,12 @@ export function getSalesActionPolicy({ operation, detail, role, locked, financia
     save: editable,
     assign: editable,
     // Other modules keep their existing handlers and permission rules.
-    return: !!operation && (!sales || (!pkg6 && !isLocked &&
+    return: !!operation && (!sales || (verifiedLegacy && !isLocked &&
       ((role === "accountant" && status === "pending") || (role === "head" && status === "approved")))),
-    returnForReview: !!operation && (!sales || (!pkg6 && !isLocked && role === "head" && status === "approved")),
-    correct: !!operation && (!sales || (!pkg6 && status === "final-approved" &&
+    returnForReview: !!operation && (!sales || (verifiedLegacy && !isLocked && role === "head" && status === "approved")),
+    correct: !!operation && (!sales || (verifiedLegacy && status === "final-approved" &&
       (role === "accountant" || role === "head"))),
-    bulkApprove: !!operation && !shf && (!sales || (!pkg6 && role === "accountant" && status === "pending")),
+    bulkApprove: !!operation && !shf && (!sales || (verifiedLegacy && role === "accountant" && status === "pending")),
   };
 }
 
@@ -85,10 +88,11 @@ export function salesBulkApprovalIds(
   detailFor?: (op: SalesGuardOperation) => SalesGuardOperation | undefined,
 ): string[] {
   const byId = new Map(operations.map(op => [op.id, op]));
-  return [...new Set(ids)].filter(id => {
+  const selected = [...new Set(ids)];
+  return selected.every(id => {
     const operation = byId.get(id);
     return operation && getSalesActionPolicy({ operation, detail: detailFor?.(operation), role }).bulkApprove;
-  });
+  }) ? selected : [];
 }
 
 export function runSalesBulkApproval(

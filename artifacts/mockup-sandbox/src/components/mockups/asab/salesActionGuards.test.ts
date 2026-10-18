@@ -8,10 +8,10 @@ import {
   hasSalesReconciliationEvidence,
   type SalesAction, type SalesActionContext,
 } from "./salesActionGuards.ts";
-import { getHeadReviewPolicy, headLegacyBulkIds } from "./headReviewGuards.ts";
+import { getHeadReviewPolicy, headLegacyBulkIds, runHeadFinalApproval } from "./headReviewGuards.ts";
 
-const legacy = { id: "legacy", moduleKey: "sales", status: "pending" };
-const day = { ...legacy, id: "day", reportReview: { phase: "accountant_review" } };
+const legacy = { id: "legacy", moduleKey: "sales", workflowKind: "legacy_sales" as const, status: "pending" };
+const day = { ...legacy, id: "day", workflowKind: "sal_day" as const, reportReview: { phase: "accountant_review" } };
 const shf = { id: "shf", moduleKey: "shifts", status: "pending", reportReview: { phase: "accountant_review" } };
 const nullableLegacyRecon = {
   channels: [{ key: "cash", actualAmountHalalas: 0, posAmountHalalas: null, diffHalalas: null }],
@@ -40,7 +40,7 @@ test("legacy accountant edit/save/assign/return and pending bulk approval remain
   assert.deepEqual(requests, ["edit", "save", "assign", "return", "bulkApprove"]);
 });
 
-test("absent and null reportReview permit legacy actions without inferring a mobile review", () => {
+test("verified Legacy permits actions independently of null review metadata", () => {
   for (const reportReview of [undefined, null]) {
     const operation = { ...legacy, origin: "mobile", publicId: "DAY-looking-id", reportReview };
     assert.equal(isPkg6SalesReport(operation), false);
@@ -154,7 +154,7 @@ test("actual sales edit/save/assign handlers send no forbidden requests in eithe
 test("actual reject confirmation and return handlers recheck review before HTTP or optimistic updates", async () => {
   for (const role of ["accountant", "head"]) {
     for (const pkg6 of [false, true]) {
-      const operation = { ...legacy, status: role === "head" ? "approved" : "pending", reportReview: pkg6 ? day.reportReview : undefined };
+      const operation = { ...legacy, status: role === "head" ? "approved" : "pending", workflowKind: pkg6 ? "sal_day" : "legacy_sales", reportReview: pkg6 ? day.reportReview : undefined };
       const requests: string[] = [];
       const changes: unknown[] = [];
       const scope = {
@@ -233,6 +233,8 @@ test("actual bulk handlers exclude PKG-6 before requests and optimistic state ch
     bulk(["day"]);
     assert.deepEqual(sent, []);
     bulk(["day", "legacy", "expense"]);
+    assert.deepEqual(sent, []);
+    bulk(["legacy", "expense"]);
     assert.deepEqual(sent, [["legacy", "expense"]]);
     assert.equal(state.find(op => op.id === "day")?.status, "pending");
   }
@@ -243,9 +245,9 @@ test("accountant bulk selection excludes SHF across mixed selections and detail 
   const operations = [shf, day, legacy, expense];
   for (const [requested, expected] of [
     [["shf"], []],
-    [["shf", "legacy"], ["legacy"]],
-    [["shf", "day", "legacy"], ["legacy"]],
-    [["shf", "expense"], ["expense"]],
+    [["shf", "legacy"], []],
+    [["shf", "day", "legacy"], []],
+    [["shf", "expense"], []],
     [["day"], []],
     [["legacy"], ["legacy"]],
   ] as const) {
@@ -264,9 +266,9 @@ test("Dashboard and ASABPrototype shared bulk handlers never emit SHF or PKG-6 I
   const operations = [shf, day, legacy, expense];
   const cases = [
     { requested:["shf"], expected:[] },
-    { requested:["shf","legacy"], expected:["legacy"] },
-    { requested:["shf","day","legacy"], expected:["legacy"] },
-    { requested:["shf","expense"], expected:["expense"] },
+    { requested:["shf","legacy"], expected:[] },
+    { requested:["shf","day","legacy"], expected:[] },
+    { requested:["shf","expense"], expected:[] },
     { requested:["day"], expected:[] },
     { requested:["legacy"], expected:["legacy"] },
   ];
@@ -343,14 +345,16 @@ test("a modal opened as legacy rechecks current API evidence before sending", ()
   assert.deepEqual(requests, []);
 });
 
-test("sales bulk approval sends only loaded eligible legacy IDs; unrelated modules are preserved", () => {
+test("bulk refuses incomplete selections and preserves valid Legacy plus unrelated modules", () => {
   const expense = { id: "expense", moduleKey: "expenses", status: "pending", reportReview: {} };
   const operations = [legacy, day, expense, { ...legacy, id: "approved", status: "approved" }];
   const requested = ["day", "legacy", "expense", "missing", "approved", "legacy"];
   const before = structuredClone(operations);
   const sent: string[][] = [];
   const ids = runSalesBulkApproval(operations, requested, "accountant", payload => sent.push(payload));
-  assert.deepEqual(ids, ["legacy", "expense"]);
+  assert.deepEqual(ids, []);
+  assert.deepEqual(sent, []);
+  assert.deepEqual(runSalesBulkApproval(operations,["legacy","expense"],"accountant",payload=>sent.push(payload)),["legacy","expense"]);
   assert.deepEqual(sent, [["legacy", "expense"]]);
   assert.deepEqual(operations, before);
   assert.deepEqual(salesBulkApprovalIds(operations, ["day", "legacy"], "head"), []);
@@ -429,5 +433,79 @@ test("nullable channels still reject malformed amounts and missing required evid
   }
   for (const channels of [[], [null], [nullableLegacyRecon.channels[0], { actualAmountHalalas: null }]]) {
     assert.equal(hasSalesReconciliationEvidence({ ...nullableLegacyRecon, channels }), false);
+  }
+});
+
+
+test("unclassified sales and SAL without review metadata fail closed at every legacy effect boundary", () => {
+  for (const workflowKind of ["sal_day","unknown",undefined,"malformed"]) {
+    const operation={...legacy,workflowKind,reportReview:null};
+    for (const action of forbidden) {
+      assert.equal(runSalesAction({operation,role:"accountant"},action,()=>assert.fail(action)),false);
+    }
+    assert.equal(getSalesActionPolicy({operation:{...operation,status:"approved"},role:"head"}).return,false);
+  }
+});
+
+test("workflow disagreement between list and detail never erases protected evidence", () => {
+  for (const detail of [{...legacy,workflowKind:"sal_day"},{...legacy,workflowKind:"unknown"}]) {
+    assert.equal(getSalesActionPolicy({operation:legacy,detail,role:"accountant"}).save,false);
+    assert.equal(getSalesActionPolicy({operation:legacy,detail,role:"head"}).returnForReview,false);
+  }
+});
+
+test("mixed sales bulk refuses the complete selection rather than silently dropping protected rows", () => {
+  const effects:string[][]=[];
+  const result=runSalesBulkApproval([legacy,{...day,reportReview:null}],[legacy.id,day.id],"accountant",ids=>effects.push(ids));
+  assert.deepEqual(result,[]);
+  assert.deepEqual(effects,[]);
+});
+
+test("prototype mixed-status bulk selection refuses every item before optimistic changes", () => {
+  for (const protectedRow of [day, shf, {...legacy,id:"unknown",workflowKind:undefined}]) {
+    const operations = [{...legacy,status:"approved"},protectedRow];
+    const [bulk] = uiHandlers("ASABPrototype.tsx","ASABPrototype",["bulkApprove"],{
+      runSalesBulkApproval,salesBulkApprovalIds,headLegacyBulkIds,
+      currentSalesOps:{current:operations},currentSalesRole:{current:"head"},ops:operations,
+      salesDetailFor:()=>undefined,now:()=>"now",
+      setOps:()=>assert.fail("partial optimistic mutation"),
+      bulkApproveMut:{mutate:()=>assert.fail("partial accountant request")},
+      bulkFinalMut:{mutate:()=>assert.fail("partial final request")},
+    });
+    bulk(["legacy",protectedRow.id]);
+  }
+});
+
+
+test("prototype individual SAL uses fresh detail, duplicate lock and confirmed server status only", async () => {
+  const row = {...day,id:"SAL-display-reference",operationId:"canonical-operation-id",status:"approved",reportReview:{phase:"head_review"}};
+  for (const outcome of ["success",403,409,"changed-state","changed-access"] as const) {
+    const role = {current:"head"};
+    let writes=0,sends=0,loads=0;
+    let release!:()=>void;
+    const gate=new Promise<void>(resolve=>{release=resolve;});
+    const [approve] = uiHandlers("ASABPrototype.tsx","ASABPrototype",["finalApproveOp"],{
+      runHeadFinalApproval,currentSalesOps:{current:[row]},currentSalesRole:role,
+      headActionLock:{current:false},headAccess:{current:"head:synthetic"},headMounted:{current:true},
+      financialAccessGeneration:()=>0,salesQueryClient:{invalidateQueries:()=>{}},
+      loadFreshHeadDetail:async()=>{
+        loads++;await gate;
+        if(outcome==="changed-access") role.current="accountant";
+        return {...row,id:row.operationId,status:outcome==="changed-state" ? "pending" : "approved"};
+      },
+      finalMut:{mutateAsync:async()=>{
+        sends++;
+        if(typeof outcome==="number") throw Object.assign(new Error("denied"),{status:outcome});
+        return {id:row.operationId,status:"final-approved"};
+      }},
+      now:()=>"now",setOps:()=>{writes++;},
+    });
+    const first=approve(row.id);
+    const second=approve(row.id);
+    assert.equal(writes,0);
+    release();await Promise.all([first,second]);
+    assert.equal(loads,1,"second click must not start another GET");
+    assert.equal(sends,outcome==="changed-state" || outcome==="changed-access" ? 0 : 1);
+    assert.equal(writes,outcome==="success" ? 1 : 0,"failures cannot display final success");
   }
 });

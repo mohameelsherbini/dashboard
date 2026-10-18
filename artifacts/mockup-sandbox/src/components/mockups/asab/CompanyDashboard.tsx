@@ -3348,6 +3348,7 @@ function useSharedOps(role: CRole | null, fingerprint: string) {
   const approve            = (id:string)    => { runOperationAction(id, "approve", () => approveMut.mutate({ id })); };
   const reject             = (id:string)    => {
     const operation = operationFor(id);
+    if (currentRole.current === "head" && (!operation || !getHeadReviewPolicy(operation, currentRole.current, detailFor(operation)).returnForReview)) return;
     if (currentRole.current === "head" && operation && ("module" in operation ? operation.module : operation.moduleKey) === "shifts") {
       if (!actionLock.current && getHeadReviewPolicy(operation, currentRole.current, detailFor(operation)).returnForReview) setRejectingId(id);
       return;

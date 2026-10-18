@@ -1,4 +1,6 @@
 import test from "node:test";
+import {readFileSync} from "node:fs";
+import ts from "typescript";
 import assert from "node:assert/strict";
 import type { Operation } from "../../../api/types/index.ts";
 import type { CashCountState, Shift } from "../../../api/types/company.ts";
@@ -195,4 +197,27 @@ test("nullable Shift presenter evidence is preserved when mapped into an SHF", (
   assert.deepEqual(mapped.payload, payload);
   assert.equal(mapped.payload?.cashCountState, null);
   assert.strictEqual(mapped.reportReview, evidence.reportReview);
+});
+
+
+test("workflowKind is preserved from server evidence, with missing classifier safely unknown", () => {
+  for (const workflowKind of ["sal_day", "legacy_sales", "unknown"] as const) {
+    const mapped=apiOpToCOp({...baseOperation,moduleKey:"sales",workflowKind,reportReview:null});
+    assert.equal(mapped.workflowKind,workflowKind);
+  }
+  assert.equal(apiOpToCOp({...baseOperation,moduleKey:"sales",reportReview:null}).workflowKind,"unknown");
+});
+
+
+test("prototype retains canonical API identity independently of the human reference and workflow label", () => {
+  const source=ts.createSourceFile("ASABPrototype.tsx",readFileSync(new URL("./ASABPrototype.tsx",import.meta.url),"utf8"),ts.ScriptTarget.ES2022,true,ts.ScriptKind.TSX);
+  const fn=source.statements.find((node):node is ts.FunctionDeclaration=>ts.isFunctionDeclaration(node)&&node.name?.text==="mapApiOpToOp");
+  assert.ok(fn);
+  const js=ts.transpileModule(`${fn.getText(source)};return mapApiOpToOp;`,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+  const map=new Function("OP_MODULE_LABELS","relativeTimeAr","actorName",js)({},()=>"",()=>undefined);
+  const mapped=map({...baseOperation,id:"canonical-uuid",publicId:"SAL-readable",workflowKind:"sal_day"});
+  assert.equal(mapped.id,"SAL-readable");
+  assert.equal(mapped.operationId,"canonical-uuid");
+  assert.equal(mapped.workflowKind,"sal_day");
+  assert.equal(map({...baseOperation,workflowKind:undefined}).workflowKind,"unknown");
 });
