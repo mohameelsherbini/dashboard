@@ -2885,3 +2885,48 @@ Reconciles Dashboard frontend (`7602da1`) with Backend v3.5 endpoints (`26f86c6`
 - **Production Build:** `pnpm run build` — 0 errors.
 - **Git Diff Syntax & Whitespace:** `git diff --check` — Exit Code: 0 (Clean).
 - **Secrets Scan:** 0 hardcoded passwords, tokens, or PII.
+
+---
+
+## 11. Dashboard GO-19 GO-18 Independent Review Remediation & Staging Reconciliation (2026-10-25)
+
+**Feature Branch:** `001-dashboard-backend-integration-review`
+**Base Commit:** `7602da1cb3446354b8229fc9a87115d48a74f154`
+**Pre-Remediation Review HEAD:** `69eb14a65eda7c6e499ac4ec30e10bd1b3277c74`
+**Mahmoud Staging HEAD:** `cc27df879c0cb10eac9d67a25d2a4df560d5feef` (contains PR #5 merge + review corrections)
+**Backend Target Reference:** `26f86c683a17a8c5ebe19771186d6b35230d62cf` (Coolify Staging - confirmed from Coolify logs by Mahmoud)
+**Execution Date:** 2026-10-25
+**Review Mandate:** Core tasks A1, A2, C1, C2, D1, S-1 to S-4, and D-3 accepted source-wise (`GO-18 SOURCE_DELIVERED — ACCEPTANCE_HOLD`). Remediate smoke runner and workflow defects, reconcile with Mahmoud Staging HEAD `cc27df8`, and preserve Mahmoud's upstream additions.
+
+### 11.1 Staging Reconciliation Matrix (`69eb14a` vs `cc27df8`)
+
+| Finding / Item | Sherbini Implementation (`69eb14a`) | Staging Implementation (`cc27df8`) | Implementation Gap | Resolution / Action Taken |
+|---|---|---|---|---|
+| **A1, A2, C1, C2, D1** | Implemented & verified | Merged via PR #5 (`8ec1786`) | Zero gap | Preserved identically |
+| **D-3 (Asset Book Value 2 Decimals)** | `fmtAmt` in `CompanyDashboard.tsx` | Local `fmtSar2` in `CompanyDashboard.tsx` (`e9b3696`) | Staging has dedicated commit `e9b3696` | Aligned with Staging `fmtSar2` implementation for 100% parity |
+| **Mode A A08 Guard** | Not present | Commits `e9b3696` & `4e3fc73` (`shiftCycle.ts` & `preflight-readonly.spec.ts`) | Staging added guard against writing manager workday GET | Adopted Staging commits into review branch |
+| **S-1 (Balanced Shift Verification)** | `verifyBalancedShift` with fallback to `candidateShifts[0]` | `evaluateFixtureShift` finding strictly by `salesHalalas===11500` | Neither had deterministic fixture ID match or ambiguity detection | Implemented deterministic fixture matching (unique `fixtureId`), ambiguity rejection (`BLOCKED / AMBIGUOUS_FIXTURE` on multiple shifts without unique ID), Asia/Riyadh timezone awareness, and 5 exact invariant validations |
+| **S-2 (Head Approval Queue)** | `/operations?moduleKey=shifts&pageSize=100` | `/operations?moduleKey=shifts&pageSize=100&page=1` | Missing `&page=1` parameter | Aligned endpoint to `/operations?moduleKey=shifts&pageSize=100&page=1` |
+| **S-4 & Role Isolation** | `logout` in `try/finally` per role, but unhandled exceptions could abort runner | `logout` best effort, no `try/finally` per role | Exception in one role halted subsequent roles | Wrapped each role in `try/catch/finally` with inner `try/catch` per check. Role exceptions marked `FAIL`, session terminated via `logout`, subsequent roles continue |
+| **Evidence Sanitization** | Printed `Account: ${r.accountEmail}` | Printed `Account: ${r.accountEmail}` | PII (email addresses) leaked in logs | Removed all account email strings. Printed non-identifying test IDs (`SMOKE_ACC_01`, etc.). Added `sanitizeError` redacting emails, tokens, and passwords |
+| **Workflow Failure Masking (P1)** | Used `|| true` on runner step; runner exited 0 on mismatch | Workflow not present on Staging | Failures masked as PASS in workflow | Removed `|| true`, set `shell: bash` with `set -o pipefail`, ensured script exits with code 1 on failed checks, kept `if: always()` for artifact upload |
+| **SEC-1 (Old Branch Status)** | Old branch exists on remote | Not present on Mahmoud's repo | Old branch `001-dashboard-backend-integration` contains leaked commit `7566377` | Confirmed presence on `origin`. Zero code copied. Documented recommendation for repository owner to delete branch after credential rotation |
+
+### 11.2 Tasks & Findings Status Matrix (GO-19)
+
+| Task ID | Finding / Requirement | Implementation Summary | Automated Test Suite | Staging / Vercel Status | Overall Item Status |
+|---|---|---|---|:---:|:---:|
+| **P1-Workflow** | Fix Smoke Workflow False Success | Removed `|| true`, added `shell: bash` with `set -o pipefail`, real exit code propagation, `if: always()` artifact upload | `smokeContract.test.ts` (T034 PASS) | `HARNESS_READY` | `VERIFIED` |
+| **P1-Shift** | Deterministic Balanced Shift Verification | Unique fixture ID support (`ASSAB_SMOKE_FIXTURE_SHIFT_ID`), ambiguity rejection (`BLOCKED / AMBIGUOUS_FIXTURE`), Asia/Riyadh timezone parsing, 5-invariant check | `smokeContract.test.ts` (T029 & T030 PASS) | `HARNESS_READY` | `VERIFIED` |
+| **P2-Isolation** | Per-Role Failure Isolation & Logout Safety | `try/catch/finally` per role + per endpoint, exception isolation, graceful logout failure handling without token leak | `smokeContract.test.ts` (T031 PASS) | `HARNESS_READY` | `VERIFIED` |
+| **P2-Sanitize** | Evidence Sanitization & Zero PII | Removed `Account: ${r.accountEmail}`, removed `accountEmail` from `RoleSmokeResult`, added `sanitizeError` for redaction | `smokeContract.test.ts` (T032 PASS) | `HARNESS_READY` | `VERIFIED` |
+| **P2-Dispatch** | GitHub Actions Dispatch Readiness | Pinned `${{ github.sha }}`, `contents: read`, separated Vercel deploy SHA from git SHA, operator instructions prepared | Workflow verified | `WORKFLOW_READY` | `VERIFIED` |
+| **SEC-1** | Historical Credential Leakage | Old branch verified present on `origin`. Zero code copied. No attempt to login with old password. Recommended deletion to owner | Security audit verified | `SECURITY_MONITORED` | `GOVERNED` |
+
+### 11.3 Quality & Governance Verification Results
+- **Phase Target Status:** `GO19_SMOKE_HARNESS_CORRECTED — STAGING_RECONCILED — RUNTIME_ACCEPTANCE_PENDING`.
+- **Targeted Automated Tests:** 13/13 PASS across targeted test suites (`smokeContract.test.ts` 10/10, `assetDepreciationRule.test.ts` 3/3), Exit Code: 0.
+- **TypeScript Compilation:** `pnpm run typecheck` — 0 errors across 3 workspace packages.
+- **Production Build:** `pnpm run build` — 0 errors (Vite + API server bundled).
+- **Git Diff Syntax & Whitespace:** `git diff --check` — Exit Code: 0 (Clean).
+- **PR Recommendation:** Staging `cc27df8` already includes GO-17 and review corrections. Do NOT submit a duplicate PR with the entire GO-17/GO-18 history. When ready, submit only a minimal targeted PR containing the GO-19 smoke runner and workflow corrections.

@@ -101,6 +101,7 @@ jobs:
             artifacts/mockup-sandbox/src/api/queries/smokeContract.test.ts
 
       - name: Execute Read-Only Staging Smoke & Sanitized Evidence Collection
+        shell: bash
         env:
           ASSAB_STAGING_API_ORIGIN: "https://szkrjqiuo9s6d6nsy5fldc0j.62.72.19.141.sslip.io"
           ASSAB_STAGING_PASSWORD: ${{ secrets.ASSAB_STAGING_PASSWORD || secrets.ASSAB_E2E_FIXTURE_PASSWORD }}
@@ -110,10 +111,10 @@ jobs:
           ASSAB_FRONTEND_DEPLOYED_SHA: ${{ github.sha }}
           ASSAB_DEPLOYMENT_ATTESTED: "true"
         run: |
+          set -o pipefail
           mkdir -p artifacts/smoke-evidence
-          node --import ./scripts/node_modules/tsx/dist/loader.mjs scripts/smoke-test-staging.ts \
-            > artifacts/smoke-evidence/smoke-output.log 2>&1 || true
-          cat artifacts/smoke-evidence/smoke-output.log
+          node --import ./scripts/node_modules/tsx/dist/loader.mjs scripts/smoke-test-staging.ts 2>&1 \
+            | tee artifacts/smoke-evidence/smoke-output.log
 
       - name: Upload sanitized smoke test evidence
         if: always()

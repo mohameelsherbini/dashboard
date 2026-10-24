@@ -1,7 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { runStagingSmoke, validStringArray, verifyBalancedShift, logout } from "../../../../../scripts/smoke-test-staging";
+import {
+  runStagingSmoke,
+  validStringArray,
+  verifyBalancedShift,
+  logout,
+  isRiyadhDate,
+  sanitizeError,
+  computeSmokeSummary,
+  type RoleSmokeResult,
+} from "../../../../../scripts/smoke-test-staging";
 
 test("T028: Contract Test - smoke-test-staging.ts matches actual Dashboard hooks and endpoints", () => {
   const smokePath = new URL("../../../../../scripts/smoke-test-staging.ts", import.meta.url);
@@ -40,7 +49,7 @@ test("T028: Contract Test - smoke-test-staging.ts matches actual Dashboard hooks
 
   // 4. S-2: Head Accountant Queue uses /operations?moduleKey=shifts&pageSize=100 with useOperations
   assert.ok(
-    smokeContent.includes('endpoint: "/operations?moduleKey=shifts&pageSize=100"'),
+    smokeContent.includes('endpoint: "/operations?moduleKey=shifts&pageSize=100'),
     "Head Accountant check must query GET /operations?moduleKey=shifts&pageSize=100",
   );
   assert.ok(
@@ -220,4 +229,256 @@ test("T028: Strict Branch Guard - Conforms to roleAccess.ts without auto-empty f
   // 4. Array with valid UUID is accepted
   const validUuid = "12345678-1234-1234-1234-123456789abc";
   assert.equal(validStringArray([validUuid], uuidPattern), true, "Valid UUID is accepted");
+});
+
+test("T030: S-1 Deterministic Fixture Identification & Ambiguity Rejection", () => {
+  // Case 1: Timezone-aware date parsing (Asia/Riyadh UTC+3)
+  // 2026-10-23T21:30:00.000Z in UTC is 2026-10-24T00:30:00+03:00 in Riyadh time
+  assert.equal(isRiyadhDate("2026-10-23T21:30:00.000Z", "2026-10-24"), true);
+  // 2026-10-24T20:59:59.000Z in UTC is 2026-10-24T23:59:59+03:00 in Riyadh time
+  assert.equal(isRiyadhDate("2026-10-24T20:59:59.000Z", "2026-10-24"), true);
+  // 2026-10-24T21:01:00.000Z in UTC is 2026-10-25T00:01:00+03:00 in Riyadh time (different date!)
+  assert.equal(isRiyadhDate("2026-10-24T21:01:00.000Z", "2026-10-24"), false);
+
+  // Case 2: Ambiguity detection - Multiple shifts on 2026-10-24 without unique ID must return BLOCKED (AMBIGUOUS_FIXTURE)
+  const multiCandidatePayload = {
+    data: [
+      {
+        id: "shf-20261024-alpha",
+        startedAt: "2026-10-24T06:00:00+03:00",
+        salesHalalas: 11500,
+        cashExpectedHalalas: 4000,
+        cashActualHalalas: 4000,
+        varianceHalalas: 0,
+        cashCountState: "counted",
+      },
+      {
+        id: "shf-20261024-beta",
+        startedAt: "2026-10-24T14:00:00+03:00",
+        salesHalalas: 11500,
+        cashExpectedHalalas: 4000,
+        cashActualHalalas: 4000,
+        varianceHalalas: 0,
+        cashCountState: "counted",
+      },
+    ],
+  };
+  const ambiguousResult = verifyBalancedShift(multiCandidatePayload, "2026-10-24");
+  assert.equal(ambiguousResult.status, "BLOCKED");
+  assert.equal(ambiguousResult.reason, "AMBIGUOUS_FIXTURE");
+  assert.ok(ambiguousResult.message.includes("Ambiguous fixture identification"));
+
+  // Case 3: Disambiguation with unique fixtureId
+  const disambiguatedResult = verifyBalancedShift(multiCandidatePayload, {
+    targetDate: "2026-10-24",
+    fixtureId: "shf-20261024-beta",
+  });
+  assert.equal(disambiguatedResult.status, "MATCH");
+  assert.equal(disambiguatedResult.shiftId, "shf-20261024-beta");
+
+  // Case 4: fixtureId requested but not found among candidates
+  const missingIdResult = verifyBalancedShift(multiCandidatePayload, {
+    targetDate: "2026-10-24",
+    fixtureId: "shf-20261024-gamma",
+  });
+  assert.equal(missingIdResult.status, "NOT_FOUND");
+  assert.equal(missingIdResult.reason, "FIXTURE_MISSING");
+  assert.ok(missingIdResult.message.includes("Fixture shift 'shf-20261024-gamma' not found"));
+});
+
+test("T031: Per-Role Failure Isolation & Logout Safety", () => {
+  const smokePath = new URL("../../../../../scripts/smoke-test-staging.ts", import.meta.url);
+  const smokeContent = readFileSync(smokePath, "utf8");
+
+  // 1. Verify every role contains try/catch/finally
+  assert.ok(smokeContent.includes("accResult.loginStatus = \"FAIL\""));
+  assert.ok(smokeContent.includes("headResult.loginStatus = \"FAIL\""));
+  assert.ok(smokeContent.includes("adminResult.loginStatus = \"FAIL\""));
+  assert.ok(smokeContent.includes("branchResult.loginStatus = \"FAIL\""));
+
+  // 2. Inner try-catch per endpoint check
+  assert.ok(smokeContent.includes('statusText: "NETWORK_ERROR"'));
+
+  // 3. Logout in finally block
+  assert.ok(smokeContent.includes("if (accToken)"));
+  assert.ok(smokeContent.includes("if (headToken)"));
+  assert.ok(smokeContent.includes("if (adminToken)"));
+  assert.ok(smokeContent.includes("if (branchToken)"));
+
+  // 4. Logout error handling
+  assert.ok(smokeContent.includes('accResult.logoutStatus = "FAILED"'));
+});
+
+test("T032: Evidence Sanitization - Zero Account Emails or Secrets in Output", () => {
+  const smokePath = new URL("../../../../../scripts/smoke-test-staging.ts", import.meta.url);
+  const smokeContent = readFileSync(smokePath, "utf8");
+
+  // 1. Output ledger does NOT print Account: ${r.accountEmail}
+  assert.equal(
+    smokeContent.includes("Account: ${r.accountEmail}"),
+    false,
+    "smoke-test-staging.ts must not print personal account email in ledger",
+  );
+
+  // 2. RoleSmokeResult interface must not contain accountEmail field
+  assert.equal(
+    smokeContent.includes("accountEmail: string;"),
+    false,
+    "RoleSmokeResult must not include accountEmail field",
+  );
+
+  // 3. sanitizeError utility redacts emails, tokens, and passwords
+  const dirtyError = "Failed to connect for user test.account@nakhat.sa with Bearer eyJhbGciOiJIUzI1NiJ9 and password \"secret123\"";
+  const sanitized = sanitizeError(dirtyError);
+  assert.equal(sanitized.includes("test.account@nakhat.sa"), false);
+  assert.equal(sanitized.includes("eyJhbGciOiJIUzI1NiJ9"), false);
+  assert.equal(sanitized.includes("secret123"), false);
+  assert.ok(sanitized.includes("[REDACTED_EMAIL]"));
+  assert.ok(sanitized.includes("[REDACTED_TOKEN]"));
+  assert.ok(sanitized.includes("[REDACTED]"));
+});
+
+test("T033: Result Categories Breakdown & Failure Determination", () => {
+  // Case 1: All checks OK produces PASS
+  const passResults: RoleSmokeResult[] = [
+    {
+      role: "accountant",
+      testId: "SMOKE_ACC_01",
+      loginStatus: "PASS",
+      logoutStatus: "SUCCESS",
+      endpoints: [
+        {
+          endpoint: "/accountant/shifts/live",
+          method: "GET",
+          description: "Live",
+          hookReference: "usePlatformLiveShifts",
+          status: 200,
+          statusText: "OK",
+          durationMs: 50,
+          rootCauseClassification: "OK",
+        },
+      ],
+    },
+  ];
+  const passSummary = computeSmokeSummary(passResults, "RUNNABLE");
+  assert.equal(passSummary.overallStatus, "PASS");
+  assert.equal(passSummary.passCount, 1);
+  assert.equal(passSummary.failCount, 0);
+
+  // Case 2: A financial mismatch must produce overallStatus: FAIL
+  const mismatchResults: RoleSmokeResult[] = [
+    {
+      role: "accountant",
+      testId: "SMOKE_ACC_01",
+      loginStatus: "PASS",
+      logoutStatus: "SUCCESS",
+      endpoints: [
+        {
+          endpoint: "/accountant/shifts/history?dateFrom=2026-10-24&dateTo=2026-10-24",
+          method: "GET",
+          description: "History",
+          hookReference: "usePlatformHistoryShifts",
+          status: 200,
+          statusText: "OK",
+          durationMs: 50,
+          rootCauseClassification: "FAIL",
+          shiftVerification: {
+            status: "MISMATCH",
+            targetDate: "2026-10-24",
+            expected: { salesHalalas: 11500, cashExpectedHalalas: 4000, cashActualHalalas: 4000, varianceHalalas: 0, cashCountState: "counted" },
+            actual: { salesHalalas: 12000, cashExpectedHalalas: 4000, cashActualHalalas: 4000, varianceHalalas: 0, cashCountState: "counted" },
+            message: "Mismatch",
+          },
+        },
+      ],
+    },
+  ];
+  const mismatchSummary = computeSmokeSummary(mismatchResults, "RUNNABLE");
+  assert.equal(mismatchSummary.overallStatus, "FAIL");
+  assert.ok(mismatchSummary.failCount >= 1);
+
+  // Case 3: Missing fixture (NOT_FOUND) must produce overallStatus: FAIL
+  const notFoundResults: RoleSmokeResult[] = [
+    {
+      role: "accountant",
+      testId: "SMOKE_ACC_01",
+      loginStatus: "PASS",
+      logoutStatus: "SUCCESS",
+      endpoints: [
+        {
+          endpoint: "/accountant/shifts/history?dateFrom=2026-10-24&dateTo=2026-10-24",
+          method: "GET",
+          description: "History",
+          hookReference: "usePlatformHistoryShifts",
+          status: 200,
+          statusText: "OK",
+          durationMs: 50,
+          rootCauseClassification: "NOT_FOUND",
+          shiftVerification: {
+            status: "NOT_FOUND",
+            targetDate: "2026-10-24",
+            expected: { salesHalalas: 11500, cashExpectedHalalas: 4000, cashActualHalalas: 4000, varianceHalalas: 0, cashCountState: "counted" },
+            message: "Not found",
+          },
+        },
+      ],
+    },
+  ];
+  const notFoundSummary = computeSmokeSummary(notFoundResults, "RUNNABLE");
+  assert.equal(notFoundSummary.overallStatus, "FAIL");
+  assert.ok(notFoundSummary.notFoundCount >= 1);
+
+  // Case 4: Backend E1 dependency (asset-drafts 404) is classified as BLOCKED
+  const blockedE1Results: RoleSmokeResult[] = [
+    {
+      role: "accountant",
+      testId: "SMOKE_ACC_01",
+      loginStatus: "PASS",
+      logoutStatus: "SUCCESS",
+      endpoints: [
+        {
+          endpoint: "/company/me/asset-drafts",
+          method: "GET",
+          description: "Asset Drafts",
+          hookReference: "useAssetDrafts",
+          status: 404,
+          statusText: "Not Found",
+          durationMs: 30,
+          rootCauseClassification: "BLOCKED",
+        },
+      ],
+    },
+  ];
+  const blockedSummary = computeSmokeSummary(blockedE1Results, "RUNNABLE");
+  assert.equal(blockedSummary.blockedCount, 1);
+  assert.equal(blockedSummary.failCount, 0);
+  assert.equal(blockedSummary.overallStatus, "PASS"); // Standing backend blocker alone does not fail frontend smoke
+});
+
+test("T034: Smoke Workflow Exit Code Propagation & Failure Safety", () => {
+  const workflowPath = new URL("../../../../../.github/workflows/assab-go17-staging-smoke.yml", import.meta.url);
+  const workflowContent = readFileSync(workflowPath, "utf8");
+
+  // 1. Unconditional || true is removed
+  assert.equal(
+    workflowContent.includes("|| true"),
+    false,
+    "Workflow must not contain unconditional '|| true' suppressing smoke failures",
+  );
+
+  // 2. shell: bash and set -o pipefail are configured
+  assert.ok(
+    workflowContent.includes("shell: bash"),
+    "Workflow smoke step must explicitly declare shell: bash",
+  );
+  assert.ok(
+    workflowContent.includes("set -o pipefail"),
+    "Workflow smoke step must set pipefail to propagate failure across tee",
+  );
+
+  // 3. Artifact upload executes with if: always()
+  assert.ok(
+    workflowContent.includes("if: always()"),
+    "Evidence upload must execute on failure using if: always()",
+  );
 });
