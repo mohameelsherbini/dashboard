@@ -100,18 +100,31 @@ test("T020: Enforce Halala Financial Display Precision in CompanyDashboard.tsx",
     "CompanyDashboard.tsx must not round bookValueHalalas to whole Riyal with Math.round",
   );
 
-  // 2. Both asset displays must preserve halalas by dividing by 100 directly
+  // 2. Both asset displays must preserve halalas using fmtAmt with fixed 2 decimal places
   assert.ok(
-    content.includes("fmt((a.bookValueHalalas ?? 0) / 100)"),
-    "CompanyDashboard.tsx must format bookValueHalalas as (a.bookValueHalalas ?? 0) / 100",
+    content.includes("fmtAmt((a.bookValueHalalas ?? 0) / 100)"),
+    "CompanyDashboard.tsx must format bookValueHalalas with fmtAmt preserving minimumFractionDigits: 2",
   );
 
-  // 3. Halala precision test: 12345 halalas must scale to 123.45 SAR without losing decimal precision
-  const rawHalalas = 12345;
-  const scaledSar = (rawHalalas / 100);
-  assert.equal(scaledSar, 123.45, "12345 halalas must scale exactly to 123.45 SAR");
-  assert.notEqual(Math.round(scaledSar), 123.45, "Math.round drops the .45 halalas to whole SAR 123");
+  // 3. Halala precision test (D-3): test 12.00, 12.50, and 123.45 SAR
+  const formatSarEn = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatSarAr = (n: number) => n.toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const fmt = (n: number | null | undefined) => n == null ? "-" : n.toLocaleString("en-US", { minimumFractionDigits: 2 });
-  assert.equal(fmt(scaledSar), "123.45", "fmt preserves 123.45 SAR");
+  // Case 1: 1200 halalas = 12.00 SAR
+  const sar1 = 1200 / 100;
+  assert.equal(sar1, 12);
+  assert.equal(formatSarEn(sar1), "12.00", "12.00 SAR must display two trailing zero fraction digits");
+  assert.equal(formatSarAr(sar1), "١٢٫٠٠", "12.00 SAR must format with two fraction digits in Arabic locale");
+
+  // Case 2: 1250 halalas = 12.50 SAR
+  const sar2 = 1250 / 100;
+  assert.equal(sar2, 12.5);
+  assert.equal(formatSarEn(sar2), "12.50", "12.50 SAR must display trailing zero as 12.50");
+  assert.equal(formatSarAr(sar2), "١٢٫٥٠", "12.50 SAR must format as ١٢٫٥٠ in Arabic locale");
+
+  // Case 3: 12345 halalas = 123.45 SAR
+  const sar3 = 12345 / 100;
+  assert.equal(sar3, 123.45);
+  assert.equal(formatSarEn(sar3), "123.45", "123.45 SAR must preserve exact halalas");
+  assert.equal(formatSarAr(sar3), "١٢٣٫٤٥", "123.45 SAR must format as ١٢٣٫٤٥ in Arabic locale");
 });

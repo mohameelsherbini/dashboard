@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { runStagingSmoke, validStringArray } from "../../../../../scripts/smoke-test-staging";
+import { runStagingSmoke, validStringArray, verifyBalancedShift, logout } from "../../../../../scripts/smoke-test-staging";
 
 test("T028: Contract Test - smoke-test-staging.ts matches actual Dashboard hooks and endpoints", () => {
   const smokePath = new URL("../../../../../scripts/smoke-test-staging.ts", import.meta.url);
@@ -27,7 +27,55 @@ test("T028: Contract Test - smoke-test-staging.ts matches actual Dashboard hooks
     "smoke-test-staging.ts must not contain obsolete /company/me/cash/custody",
   );
 
-  // 3. Verify hook alignment across all smoke checks
+  // 3. S-1: Verify removal of ineffective netSalesHalalas from live shifts
+  assert.equal(
+    smokeContent.includes('halalaField: "netSalesHalalas"'),
+    false,
+    "smoke-test-staging.ts must not check non-existent netSalesHalalas field on /accountant/shifts/live",
+  );
+  assert.ok(
+    smokeContent.includes('endpoint: "/accountant/shifts/history?dateFrom=2026-10-24&dateTo=2026-10-24"'),
+    "smoke-test-staging.ts must check explicit 2026-10-24 shift history endpoint",
+  );
+
+  // 4. S-2: Head Accountant Queue uses /operations?moduleKey=shifts&pageSize=100 with useOperations
+  assert.ok(
+    smokeContent.includes('endpoint: "/operations?moduleKey=shifts&pageSize=100"'),
+    "Head Accountant check must query GET /operations?moduleKey=shifts&pageSize=100",
+  );
+  assert.ok(
+    smokeContent.includes('hookReference: "useOperations"'),
+    "Head Accountant check must reference useOperations hook",
+  );
+  assert.equal(
+    smokeContent.includes('/accountant/shifts/history?status=pending_head_approval'),
+    false,
+    "smoke-test-staging.ts must not query obsolete /accountant/shifts/history?status=pending_head_approval",
+  );
+
+  // 5. S-4: Session Cleanup via POST /auth/logout in try/finally
+  assert.ok(
+    smokeContent.includes("export async function logout("),
+    "smoke-test-staging.ts must export a logout helper function",
+  );
+  assert.ok(
+    smokeContent.includes("await logout(accToken)"),
+    "Accountant role must call logout in finally block",
+  );
+  assert.ok(
+    smokeContent.includes("await logout(headToken)"),
+    "Head role must call logout in finally block",
+  );
+  assert.ok(
+    smokeContent.includes("await logout(adminToken)"),
+    "Admin role must call logout in finally block",
+  );
+  assert.ok(
+    smokeContent.includes("await logout(branchToken)"),
+    "Branch role must call logout in finally block",
+  );
+
+  // 6. Verify hook alignment across all smoke checks
   assert.ok(smokeContent.includes('hookReference: "usePlatformLiveShifts"'));
   assert.ok(smokeContent.includes('hookReference: "usePlatformHistoryShifts"'));
   assert.ok(smokeContent.includes('hookReference: "useAccountantOperationsPlatform"'));
@@ -37,6 +85,80 @@ test("T028: Contract Test - smoke-test-staging.ts matches actual Dashboard hooks
   assert.ok(smokeContent.includes('hookReference: "useERPBatches"'));
   assert.ok(smokeContent.includes('hookReference: "useCompanyUsers"'));
   assert.ok(smokeContent.includes('hookReference: "useAuthMe"'));
+});
+
+test("T029: S-1 Offline Unit Tests - verifyBalancedShift handles MATCH, MISMATCH, and NOT_FOUND", () => {
+  // Case 1: MATCH - All 5 fields match approved 2026-10-24 fixture values exactly
+  const matchPayload = {
+    data: [
+      {
+        id: "shf-20261024-001",
+        startedAt: "2026-10-24T06:00:00+03:00",
+        endedAt: "2026-10-24T14:30:00+03:00",
+        salesHalalas: 11500,
+        cashExpectedHalalas: 4000,
+        cashActualHalalas: 4000,
+        varianceHalalas: 0,
+        cashCountState: "counted",
+      },
+    ],
+  };
+  const matchResult = verifyBalancedShift(matchPayload, "2026-10-24");
+  assert.equal(matchResult.status, "MATCH");
+  assert.equal(matchResult.shiftId, "shf-20261024-001");
+  assert.equal(matchResult.actual?.salesHalalas, 11500);
+  assert.equal(matchResult.actual?.cashExpectedHalalas, 4000);
+  assert.equal(matchResult.actual?.cashActualHalalas, 4000);
+  assert.equal(matchResult.actual?.varianceHalalas, 0);
+  assert.equal(matchResult.actual?.cashCountState, "counted");
+  assert.equal(matchResult.mismatches, undefined);
+
+  // Case 2: MISMATCH - Target shift on 2026-10-24 has differing values (e.g. variance, sales, cashCountState)
+  const mismatchPayload = {
+    data: [
+      {
+        id: "shf-20261024-002",
+        startedAt: "2026-10-24T14:30:00+03:00",
+        endedAt: "2026-10-24T23:00:00+03:00",
+        salesHalalas: 12000, // Expected 11500
+        cashExpectedHalalas: 4000,
+        cashActualHalalas: 3800, // Expected 4000
+        varianceHalalas: -200, // Expected 0
+        cashCountState: "unknown", // Expected "counted"
+      },
+    ],
+  };
+  const mismatchResult = verifyBalancedShift(mismatchPayload, "2026-10-24");
+  assert.equal(mismatchResult.status, "MISMATCH");
+  assert.equal(mismatchResult.shiftId, "shf-20261024-002");
+  assert.ok(mismatchResult.mismatches && mismatchResult.mismatches.length === 4);
+  assert.ok(mismatchResult.mismatches.some(m => m.field === "salesHalalas" && m.expected === 11500 && m.actual === 12000));
+  assert.ok(mismatchResult.mismatches.some(m => m.field === "cashActualHalalas" && m.expected === 4000 && m.actual === 3800));
+  assert.ok(mismatchResult.mismatches.some(m => m.field === "varianceHalalas" && m.expected === 0 && m.actual === -200));
+  assert.ok(mismatchResult.mismatches.some(m => m.field === "cashCountState" && m.expected === "counted" && m.actual === "unknown"));
+
+  // Case 3A: NOT_FOUND - Empty data array returned
+  const notFoundEmpty = verifyBalancedShift({ data: [] }, "2026-10-24");
+  assert.equal(notFoundEmpty.status, "NOT_FOUND");
+  assert.ok(notFoundEmpty.message.includes("No shifts found"));
+
+  // Case 3B: NOT_FOUND - Shifts exist but only for other dates (e.g. 2026-10-23)
+  const notFoundOtherDate = verifyBalancedShift({
+    data: [
+      {
+        id: "shf-20261023-001",
+        startedAt: "2026-10-23T06:00:00+03:00",
+        endedAt: "2026-10-23T14:30:00+03:00",
+        salesHalalas: 11500,
+        cashExpectedHalalas: 4000,
+        cashActualHalalas: 4000,
+        varianceHalalas: 0,
+        cashCountState: "counted",
+      },
+    ],
+  }, "2026-10-24");
+  assert.equal(notFoundOtherDate.status, "NOT_FOUND");
+  assert.ok(notFoundOtherDate.message.includes("No shift matching target date 2026-10-24"));
 });
 
 test("T028: Staging Readiness Gate - Blocks execution and makes zero requests when attestation is missing", async () => {

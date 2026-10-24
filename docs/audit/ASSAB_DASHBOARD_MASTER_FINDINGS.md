@@ -2852,3 +2852,36 @@ Reconciles Dashboard frontend (`7602da1`) with Backend v3.5 endpoints (`26f86c6`
 - **Automated Unit & Contract Tests:** 24/24 PASS across 6 test suites, Exit Code: 0.
 - **Audit Smoke Report:** `dashboard/docs/audit/ASSAB_DASHBOARD_AUTH_SMOKE_20261024.md`.
 
+---
+
+## 10. Dashboard GO-18 Mahmoud Review Corrections & Safe Staging Smoke Preparation (2026-10-25)
+
+**Feature Branch:** `001-dashboard-backend-integration-review`
+**Base Commit:** `7602da1cb3446354b8229fc9a87115d48a74f154`
+**Starting Review HEAD:** `9ce0141f7f2c81919bb9f7bbd93cf8add679c180`
+**Backend Target Reference:** `26f86c683a17a8c5ebe19771186d6b35230d62cf` (Coolify Staging - confirmed from Coolify logs by Mahmoud)
+**Execution Date:** 2026-10-25
+**Review Mandate:** A1, A2, C1, C2, D1 accepted source-wise. Zero rewrites from scratch. Strict remediation of S-1, S-2, S-3, S-4, D-3, Batch 2 GitHub Actions Smoke Workflow, and Batch 3/4 Governance.
+
+### 10.1 Tasks & Findings Remediation Matrix
+
+| Finding / Item | Requirement & Root Cause | Remediation Summary | Verification Test | Overall Item Status |
+|---|---|---|---|:---:|
+| **S-1** (P2) | Ineffective `netSalesHalalas` check in smoke runner | Removed `netSalesHalalas` check. Added explicit query `GET /accountant/shifts/history?dateFrom=2026-10-24&dateTo=2026-10-24`. Implemented `verifyBalancedShift` with 5 exact invariants (`salesHalalas: 11500`, `cashExpectedHalalas: 4000`, `cashActualHalalas: 4000`, `varianceHalalas: 0`, `cashCountState: "counted"`). Returns `NOT_FOUND` if absent, `FAIL` with details if mismatched | `smokeContract.test.ts` (MATCH, MISMATCH, NOT_FOUND offline unit tests PASS) | `HARNESS_READY` |
+| **S-2** (P3) | Head Review Queue queried obsolete shift history endpoint | Replaced `/accountant/shifts/history?status=pending_head_approval` with `GET /operations?moduleKey=shifts&pageSize=100` matching `CompanyDashboard.tsx:6129` and hook `useOperations` | `smokeContract.test.ts` (Contract test PASS) | `HARNESS_READY` |
+| **S-3** (P3) | Audit ledger displayed `OK` prior to runtime execution | Replaced `OK` column with `EXPECTED` and `ACTUAL` in `ASSAB_DASHBOARD_AUTH_SMOKE_20261024.md`. Honestly recorded as `NOT_RUN` / `BLOCKED` for runtime staging | Documentation audit verified | `DOCUMENTED` |
+| **S-4** (P3) | Sessions left open after role login tests | Implemented `POST /api/v1/auth/logout` via `logout(token)` wrapped in `try/finally` for each role. Sanitized outcome logged without tokens or cookies | `smokeContract.test.ts` (finally blocks verified) | `HARNESS_READY` |
+| **D-3** (P3) | Asset book value display lacked fixed 2-decimal fraction digits | Applied `fmtAmt` (`minimumFractionDigits: 2`, `maximumFractionDigits: 2`) to `(a.bookValueHalalas ?? 0) / 100` in `CompanyDashboard.tsx:5973,6024`. Global `fmt` for non-financial counts preserved | `assetDepreciationRule.test.ts` (12.00, 12.50, 123.45 SAR verified in EN/AR) | `SOURCE_VERIFIED` |
+| **Batch 2** | GitHub Actions Staging Smoke Workflow | Created `.github/workflows/assab-go17-staging-smoke.yml` (`workflow_dispatch` only, pinned commit `${{ github.sha }}`, permissions `contents: read`, environment secrets, fail-closed gate, sanitized artifact upload) | Workflow YAML syntax validated | `WORKFLOW_READY` |
+| **SEC-1** (P1) | Credential exposure in history of old branch `001-dashboard-backend-integration` | Documented requirement for Mahmoud to rotate exposed password. Verified review branch `001-dashboard-backend-integration-review` is clean from ancestor `7602da1`. Flagged old branch for remote deletion | Security audit verified | `SECURITY_FLAGGED` |
+| **INFO-1** | Net=100 / VAT=15 verification in UI | Marked `NOT_APPLICABLE` for Dashboard Browser QA since Dashboard UI displays gross amounts inclusive of VAT only | Documentation audit verified | `DOCUMENTED` |
+| **INFO-2** | CASH-14 and CASH-16 responsibility clarification | Confirmed CASH-14 (transfer correction) and CASH-16 (cashier debt repayment) are Backend-owned and assigned to Mahmoud | Documentation audit verified | `DOCUMENTED` |
+| **E1–E4** | Backend WP1 Open Items | Confirmed E1–E4 remain Backend-owned. Task B2 remains `BLOCKED` until E2/E3 are deployed to Coolify and attested | Architecture audit verified | `BACKEND_BLOCKED` |
+
+### 10.2 Quality & Governance Verification Results
+- **Phase Status:** `GO18_SOURCE_AND_HARNESS_COMPLETE — STAGING_NOT_RUN`.
+- **Targeted Automated Tests:** 52/52 PASS across 8 test suites, Exit Code: 0.
+- **TypeScript Compilation:** `pnpm run typecheck` — 0 errors across 3 workspace packages.
+- **Production Build:** `pnpm run build` — 0 errors.
+- **Git Diff Syntax & Whitespace:** `git diff --check` — Exit Code: 0 (Clean).
+- **Secrets Scan:** 0 hardcoded passwords, tokens, or PII.
