@@ -104,6 +104,31 @@ The runner script computes explicit result categories:
 | **Branch Manager** | `/company/me/branch/overview` | `GET` | `usePlatformBranchOverview` | `HTTP 200 (Branch dashboard)` | `NOT_RUN` |
 | **Role-less User** | `/company/me/shifts` | `GET` | `useRoleGuard` | `HTTP 403 + error.code: WRONG_ROLE + messageAr` | `NOT_RUN` |
 
+### 5.1 Simulated Runner Output Ledger [ILLUSTRATIVE_SAMPLE — OFFLINE SIMULATION ONLY — STAGING RUNTIME IS NOT_RUN]
+
+> **CRITICAL VERIFICATION NOTICE:**
+> The summary block below is strictly an **illustrative sample** representing offline simulation and runner format demonstration.
+> Live Staging Runtime status remains strictly **`NOT_RUN`** until manual operator attestation and dispatch by Mahmoud on Vercel/Coolify.
+
+```
+==================================================
+ASSAB ERP — Staging Smoke Runner Summary
+==================================================
+Overall Acceptance Status: BLOCKED
+Executed Checks Status: ALL_PASSED
+Result Categories Breakdown:
+  - PASS:     16
+  - FAIL:     0
+  - NOT_FOUND: 0
+  - BLOCKED:  1
+  - NOT_RUN:  0
+--------------------------------------------------
+Standing Environment / Dependency Blockers:
+ * /company/me/asset-drafts returned HTTP 404: BLOCKED (Backend E1 dependency)
+Operational acceptance is BLOCKED. Dashboard executed checks ALL_PASSED (16/16).
+==================================================
+```
+
 ---
 
 ## 6. GitHub Actions Dispatch Readiness & Operator Instructions

@@ -2921,11 +2921,12 @@ Reconciles Dashboard frontend (`7602da1`) with Backend v3.5 endpoints (`26f86c6`
 | **P2-Isolation** | Per-Role Failure Isolation & Logout Safety | `try/catch/finally` per role + per endpoint, exception isolation, graceful logout failure handling without token leak | `smokeContract.test.ts` (T031 PASS) | `HARNESS_READY` | `VERIFIED` |
 | **P2-Sanitize** | Evidence Sanitization & Zero PII | Removed `Account: ${r.accountEmail}`, removed `accountEmail` from `RoleSmokeResult`, added `sanitizeError` for redaction | `smokeContract.test.ts` (T032 PASS) | `HARNESS_READY` | `VERIFIED` |
 | **P2-Dispatch** | GitHub Actions Dispatch Readiness | Pinned `${{ github.sha }}`, `contents: read`, separated Vercel deploy SHA from git SHA, operator instructions prepared | Workflow verified | `WORKFLOW_READY` | `VERIFIED` |
+| **P1-SmokeAcceptance** | Smoke Acceptance Logic & Blocker Separation | Separated `executedChecksStatus` (`ALL_PASSED`) from `overallStatus` (`BLOCKED` on blockers). Factored `branchScopeEvaluation.guardPassed` and `logoutStatus === "FAILED"`. Added regression test proving 16 PASS + 1 BLOCKED yields BLOCKED, strictly NOT PASS | `smokeContract.test.ts` (T033 regression tests PASS) | `HARNESS_READY` | `VERIFIED` |
 | **SEC-1** | Historical Credential Leakage | Old branch verified present on `origin`. Zero code copied. No attempt to login with old password. Recommended deletion to owner | Security audit verified | `SECURITY_MONITORED` | `GOVERNED` |
 
 ### 11.3 Quality & Governance Verification Results
 - **Phase Target Status:** `GO19_SMOKE_HARNESS_CORRECTED — STAGING_RECONCILED — RUNTIME_ACCEPTANCE_PENDING`.
-- **Targeted Automated Tests:** 13/13 PASS across targeted test suites (`smokeContract.test.ts` 10/10, `assetDepreciationRule.test.ts` 3/3), Exit Code: 0.
+- **Targeted Automated Tests:** 13/13 PASS across targeted test suites (`smokeContract.test.ts` 10/10 with expanded T033 regression suite, `assetDepreciationRule.test.ts` 3/3), Exit Code: 0.
 - **TypeScript Compilation:** `pnpm run typecheck` — 0 errors across 3 workspace packages.
 - **Production Build:** `pnpm run build` — 0 errors (Vite + API server bundled).
 - **Git Diff Syntax & Whitespace:** `git diff --check` — Exit Code: 0 (Clean).

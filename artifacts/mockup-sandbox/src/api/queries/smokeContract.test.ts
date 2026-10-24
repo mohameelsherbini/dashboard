@@ -362,6 +362,7 @@ test("T033: Result Categories Breakdown & Failure Determination", () => {
   ];
   const passSummary = computeSmokeSummary(passResults, "RUNNABLE");
   assert.equal(passSummary.overallStatus, "PASS");
+  assert.equal(passSummary.executedChecksStatus, "ALL_PASSED");
   assert.equal(passSummary.passCount, 1);
   assert.equal(passSummary.failCount, 0);
 
@@ -395,6 +396,7 @@ test("T033: Result Categories Breakdown & Failure Determination", () => {
   ];
   const mismatchSummary = computeSmokeSummary(mismatchResults, "RUNNABLE");
   assert.equal(mismatchSummary.overallStatus, "FAIL");
+  assert.equal(mismatchSummary.executedChecksStatus, "HAS_FAILURES");
   assert.ok(mismatchSummary.failCount >= 1);
 
   // Case 3: Missing fixture (NOT_FOUND) must produce overallStatus: FAIL
@@ -426,6 +428,7 @@ test("T033: Result Categories Breakdown & Failure Determination", () => {
   ];
   const notFoundSummary = computeSmokeSummary(notFoundResults, "RUNNABLE");
   assert.equal(notFoundSummary.overallStatus, "FAIL");
+  assert.equal(notFoundSummary.executedChecksStatus, "HAS_FAILURES");
   assert.ok(notFoundSummary.notFoundCount >= 1);
 
   // Case 4: Backend E1 dependency (asset-drafts 404) is classified as BLOCKED
@@ -452,7 +455,122 @@ test("T033: Result Categories Breakdown & Failure Determination", () => {
   const blockedSummary = computeSmokeSummary(blockedE1Results, "RUNNABLE");
   assert.equal(blockedSummary.blockedCount, 1);
   assert.equal(blockedSummary.failCount, 0);
-  assert.equal(blockedSummary.overallStatus, "PASS"); // Standing backend blocker alone does not fail frontend smoke
+  assert.equal(blockedSummary.executedChecksStatus, "NONE_RUN");
+  assert.equal(blockedSummary.overallStatus, "BLOCKED"); // Standing backend blocker blocks operational acceptance (never PASS)
+
+  // Case 5 (Regression): 16 PASS + 1 BLOCKED must NOT yield Overall Acceptance PASS
+  const sixteenPassOneBlockedResults: RoleSmokeResult[] = [
+    {
+      role: "accountant",
+      testId: "SMOKE_ACC_01",
+      loginStatus: "PASS",
+      logoutStatus: "SUCCESS",
+      endpoints: [
+        { endpoint: "/accountant/shifts/live", method: "GET", description: "Live", hookReference: "usePlatformLiveShifts", status: 200, statusText: "OK", durationMs: 40, rootCauseClassification: "OK" },
+        { endpoint: "/accountant/shifts/history?dateFrom=2026-10-24&dateTo=2026-10-24", method: "GET", description: "Shift 2026-10-24", hookReference: "usePlatformHistoryShifts", status: 200, statusText: "OK", durationMs: 40, rootCauseClassification: "OK", shiftVerification: { status: "MATCH", targetDate: "2026-10-24", expected: { salesHalalas: 11500, cashExpectedHalalas: 4000, cashActualHalalas: 4000, varianceHalalas: 0, cashCountState: "counted" }, actual: { salesHalalas: 11500, cashExpectedHalalas: 4000, cashActualHalalas: 4000, varianceHalalas: 0, cashCountState: "counted" }, message: "Matched" } },
+        { endpoint: "/accountant/shifts/history", method: "GET", description: "History", hookReference: "usePlatformHistoryShifts", status: 200, statusText: "OK", durationMs: 40, rootCauseClassification: "OK" },
+        { endpoint: "/accountant/operations", method: "GET", description: "Operations", hookReference: "useAccountantOperationsPlatform", status: 200, statusText: "OK", durationMs: 40, rootCauseClassification: "OK" },
+        { endpoint: "/accountant/employees", method: "GET", description: "Employees", hookReference: "usePlatformEmployees", status: 200, statusText: "OK", durationMs: 40, rootCauseClassification: "OK" },
+        { endpoint: "/company/me/cash-custody", method: "GET", description: "Cash Custody", hookReference: "useCashCustody", status: 200, statusText: "OK", durationMs: 40, rootCauseClassification: "OK" },
+        { endpoint: "/company/me/asset-drafts", method: "GET", description: "Asset Drafts", hookReference: "useAssetDrafts", status: 404, statusText: "Not Found", durationMs: 30, rootCauseClassification: "BLOCKED" },
+      ],
+    },
+    {
+      role: "head",
+      testId: "SMOKE_HEAD_01",
+      loginStatus: "PASS",
+      logoutStatus: "SUCCESS",
+      endpoints: [
+        { endpoint: "/plans", method: "GET", description: "Plans", hookReference: "useCompanyPlans", status: 200, statusText: "OK", durationMs: 30, rootCauseClassification: "OK" },
+        { endpoint: "/head/erp/batches", method: "GET", description: "Batches", hookReference: "useERPBatches", status: 200, statusText: "OK", durationMs: 30, rootCauseClassification: "OK" },
+        { endpoint: "/head/erp/eligible-operations", method: "GET", description: "Eligible Ops", hookReference: "useERPEligibleOperations", status: 200, statusText: "OK", durationMs: 30, rootCauseClassification: "OK" },
+        { endpoint: "/operations?moduleKey=shifts&pageSize=100&page=1", method: "GET", description: "Operations", hookReference: "useOperations", status: 200, statusText: "OK", durationMs: 30, rootCauseClassification: "OK" },
+      ],
+    },
+    {
+      role: "company-admin",
+      testId: "SMOKE_ADMIN_01",
+      loginStatus: "PASS",
+      logoutStatus: "SUCCESS",
+      endpoints: [
+        { endpoint: "/company/me/users", method: "GET", description: "Users", hookReference: "useCompanyUsers", status: 200, statusText: "OK", durationMs: 30, rootCauseClassification: "OK" },
+        { endpoint: "/company/invitations", method: "GET", description: "Invitations", hookReference: "useCompanyInvitations", status: 200, statusText: "OK", durationMs: 30, rootCauseClassification: "OK" },
+        { endpoint: "/plans", method: "GET", description: "Plans", hookReference: "useCompanyPlans", status: 200, statusText: "OK", durationMs: 30, rootCauseClassification: "OK" },
+        { endpoint: "/company/me/subscription", method: "GET", description: "Subscription", hookReference: "useCompanySubscription", status: 200, statusText: "OK", durationMs: 30, rootCauseClassification: "OK" },
+      ],
+    },
+    {
+      role: "branch",
+      testId: "SMOKE_BRANCH_01",
+      loginStatus: "PASS",
+      logoutStatus: "SUCCESS",
+      endpoints: [
+        { endpoint: "/auth/me", method: "GET", description: "AuthMe", hookReference: "useAuthMe", status: 200, statusText: "OK", durationMs: 30, rootCauseClassification: "OK" },
+        { endpoint: "/company/me/branch/overview", method: "GET", description: "Branch Overview", hookReference: "usePlatformBranchOverview", status: 200, statusText: "OK", durationMs: 30, rootCauseClassification: "OK" },
+      ],
+    },
+  ];
+
+  const sixteenPassSummary = computeSmokeSummary(sixteenPassOneBlockedResults, "RUNNABLE");
+  assert.equal(sixteenPassSummary.passCount, 16, "Must count exactly 16 passed endpoints");
+  assert.equal(sixteenPassSummary.blockedCount, 1, "Must count exactly 1 blocked endpoint");
+  assert.equal(sixteenPassSummary.failCount, 0, "Must have zero failCount");
+  assert.equal(sixteenPassSummary.notFoundCount, 0, "Must have zero notFoundCount");
+  assert.equal(sixteenPassSummary.executedChecksStatus, "ALL_PASSED", "Executed checks must be ALL_PASSED");
+  assert.notEqual(sixteenPassSummary.overallStatus, "PASS", "16 PASS + 1 BLOCKED must NEVER give Overall Acceptance PASS");
+  assert.equal(sixteenPassSummary.overallStatus, "BLOCKED", "16 PASS + 1 BLOCKED must give Overall Acceptance BLOCKED");
+
+  // Case 6: Failed session logout must register as failure
+  const logoutFailedResults: RoleSmokeResult[] = [
+    {
+      role: "accountant",
+      testId: "SMOKE_ACC_01",
+      loginStatus: "PASS",
+      logoutStatus: "FAILED",
+      endpoints: [
+        { endpoint: "/accountant/shifts/live", method: "GET", description: "Live", hookReference: "usePlatformLiveShifts", status: 200, statusText: "OK", durationMs: 50, rootCauseClassification: "OK" },
+      ],
+    },
+  ];
+  const logoutFailedSummary = computeSmokeSummary(logoutFailedResults, "RUNNABLE");
+  assert.ok(logoutFailedSummary.failCount >= 1, "Logout failure must increment failCount");
+  assert.equal(logoutFailedSummary.executedChecksStatus, "HAS_FAILURES");
+  assert.equal(logoutFailedSummary.overallStatus, "FAIL");
+
+  // Case 7: Failed branch scope guard (Backend E2/E3 fixture pollution) must register as BLOCKED
+  const branchEvaluationResults: RoleSmokeResult[] = [
+    {
+      role: "branch",
+      testId: "SMOKE_BRANCH_01",
+      loginStatus: "PASS",
+      logoutStatus: "SUCCESS",
+      endpoints: [
+        { endpoint: "/company/me/branch/overview", method: "GET", description: "Branch Overview", hookReference: "usePlatformBranchOverview", status: 200, statusText: "OK", durationMs: 30, rootCauseClassification: "OK" },
+      ],
+    },
+  ];
+  const branchGuardFailedSummary = computeSmokeSummary(branchEvaluationResults, "RUNNABLE", {
+    guardPassed: false,
+    verdict: "COMPATIBILITY_HOLD_BACKEND_FIXTURE_POLLUTED (Backend E2/E3 dependency)",
+  });
+  assert.ok(branchGuardFailedSummary.blockedCount >= 1, "Failed branch guard must increment blockedCount");
+  assert.equal(branchGuardFailedSummary.failCount, 0, "Branch fixture blocker must not be blamed on Dashboard as a failure");
+  assert.equal(branchGuardFailedSummary.overallStatus, "BLOCKED");
+
+  // Case 8: Unexecuted check must not yield complete acceptance PASS
+  const notRunResults: RoleSmokeResult[] = [
+    {
+      role: "accountant",
+      testId: "SMOKE_ACC_01",
+      loginStatus: "NOT_RUN",
+      logoutStatus: "NOT_RUN",
+      endpoints: [],
+    },
+  ];
+  const notRunSummary = computeSmokeSummary(notRunResults, "RUNNABLE");
+  assert.ok(notRunSummary.notRunCount >= 1);
+  assert.notEqual(notRunSummary.overallStatus, "PASS");
+  assert.equal(notRunSummary.overallStatus, "NOT_RUN");
 });
 
 test("T034: Smoke Workflow Exit Code Propagation & Failure Safety", () => {

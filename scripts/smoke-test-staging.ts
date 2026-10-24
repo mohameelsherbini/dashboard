@@ -294,6 +294,7 @@ export interface SmokeSummary {
   notFoundCount: number;
   blockedCount: number;
   notRunCount: number;
+  executedChecksStatus: "ALL_PASSED" | "HAS_FAILURES" | "NONE_RUN";
   overallStatus: "PASS" | "FAIL" | "BLOCKED" | "NOT_RUN";
 }
 
@@ -373,7 +374,11 @@ export async function login(email: string): Promise<{ token: string | null; sani
   }
 }
 
-export function computeSmokeSummary(results: RoleSmokeResult[], environmentState: string): SmokeSummary {
+export function computeSmokeSummary(
+  results: RoleSmokeResult[],
+  environmentState: string,
+  branchScopeEvaluation?: { guardPassed?: boolean; verdict?: string } | null
+): SmokeSummary {
   let passCount = 0;
   let failCount = 0;
   let notFoundCount = 0;
@@ -382,7 +387,7 @@ export function computeSmokeSummary(results: RoleSmokeResult[], environmentState
   let totalEndpoints = 0;
 
   if (environmentState.startsWith("BLOCKED")) {
-    for (const r of results) {
+    for (const _ of results) {
       blockedCount++;
     }
     return {
@@ -392,6 +397,7 @@ export function computeSmokeSummary(results: RoleSmokeResult[], environmentState
       notFoundCount: 0,
       blockedCount,
       notRunCount: 0,
+      executedChecksStatus: "NONE_RUN",
       overallStatus: "BLOCKED",
     };
   }
@@ -405,33 +411,82 @@ export function computeSmokeSummary(results: RoleSmokeResult[], environmentState
       notRunCount++;
     }
 
+    // Do not ignore failed session termination (logout failure is an endpoint failure)
+    if (r.logoutStatus === "FAILED") {
+      failCount++;
+    }
+
     for (const ep of r.endpoints) {
       totalEndpoints++;
       const cls = ep.rootCauseClassification;
-      if (cls === "OK") {
-        passCount++;
-      } else if (cls === "BLOCKED") {
-        blockedCount++;
-      } else if (cls === "NOT_FOUND") {
-        notFoundCount++;
-      } else if (cls === "FAIL" || cls === "SERVER_ERROR" || cls === "CONTRACT_MISSING" || cls === "URL_NOT_FOUND" || cls === "ROLE_MISMATCH" || cls === "INSUFFICIENT_PERMISSION") {
-        failCount++;
-      }
+
+      let epFailed = false;
+      let epBlocked = false;
+      let epNotFound = false;
 
       if (ep.shiftVerification) {
-        if (ep.shiftVerification.status === "MISMATCH") {
-          failCount++;
-        } else if (ep.shiftVerification.status === "NOT_FOUND") {
-          notFoundCount++;
-        } else if (ep.shiftVerification.status === "BLOCKED") {
-          blockedCount++;
-        }
+        if (ep.shiftVerification.status === "MISMATCH") epFailed = true;
+        else if (ep.shiftVerification.status === "NOT_FOUND") epNotFound = true;
+        else if (ep.shiftVerification.status === "BLOCKED") epBlocked = true;
+      }
+
+      if (
+        cls === "FAIL" ||
+        cls === "SERVER_ERROR" ||
+        cls === "CONTRACT_MISSING" ||
+        cls === "URL_NOT_FOUND" ||
+        cls === "ROLE_MISMATCH" ||
+        cls === "INSUFFICIENT_PERMISSION"
+      ) {
+        epFailed = true;
+      } else if (cls === "NOT_FOUND") {
+        epNotFound = true;
+      } else if (cls === "BLOCKED") {
+        epBlocked = true;
+      }
+
+      if (epFailed) {
+        failCount++;
+      } else if (epNotFound) {
+        notFoundCount++;
+      } else if (epBlocked) {
+        blockedCount++;
+      } else if (cls === "OK") {
+        passCount++;
+      } else if (cls === "NOT_RUN") {
+        notRunCount++;
       }
     }
   }
 
+  // Branch Scope evaluation: if branch role access guard failed due to polluted backend fixture,
+  // classify as Backend E2/E3 blocker (do not ignore guardPassed result)
+  if (branchScopeEvaluation && branchScopeEvaluation.guardPassed === false) {
+    blockedCount++;
+  }
+
   const hasFailures = failCount > 0 || notFoundCount > 0;
-  const overallStatus = hasFailures ? "FAIL" : "PASS";
+  const executedChecksStatus = hasFailures
+    ? "HAS_FAILURES"
+    : passCount > 0
+      ? "ALL_PASSED"
+      : "NONE_RUN";
+
+  // Operational Acceptance Status:
+  // - If any check failed -> FAIL
+  // - If any mandatory check is blocked (e.g. Backend E1/E2/E3 dependency) -> BLOCKED (never PASS)
+  // - If any mandatory check was not run, or no checks passed -> NOT_RUN (no complete acceptance)
+  // - Only if ALL mandatory checks pass and zero are blocked/failed/unexecuted -> PASS
+  let overallStatus: "PASS" | "FAIL" | "BLOCKED" | "NOT_RUN";
+  if (hasFailures) {
+    overallStatus = "FAIL";
+  } else if (blockedCount > 0) {
+    overallStatus = "BLOCKED";
+  } else if (notRunCount > 0 || passCount === 0) {
+    overallStatus = "NOT_RUN";
+  } else {
+    overallStatus = "PASS";
+  }
 
   return {
     totalEndpoints,
@@ -440,6 +495,7 @@ export function computeSmokeSummary(results: RoleSmokeResult[], environmentState
     notFoundCount,
     blockedCount,
     notRunCount,
+    executedChecksStatus,
     overallStatus,
   };
 }
@@ -1006,7 +1062,7 @@ export async function runStagingSmoke(): Promise<{
     results.push(rolelessResult);
   }
 
-  const summary = computeSmokeSummary(results, "RUNNABLE");
+  const summary = computeSmokeSummary(results, "RUNNABLE", branchScopeEvaluation);
 
   return {
     timestamp,
@@ -1030,6 +1086,7 @@ if (process.argv[1] && (process.argv[1].endsWith("smoke-test-staging.ts") || pro
       console.log("ASSAB ERP — Staging Smoke Runner Summary");
       console.log("==================================================");
       console.log(`Overall Acceptance Status: ${report.summary.overallStatus}`);
+      console.log(`Executed Checks Status: ${report.summary.executedChecksStatus}`);
       console.log(`Result Categories Breakdown:`);
       console.log(`  - PASS:     ${report.summary.passCount}`);
       console.log(`  - FAIL:     ${report.summary.failCount}`);
@@ -1067,9 +1124,10 @@ if (process.argv[1] && (process.argv[1].endsWith("smoke-test-staging.ts") || pro
         try {
           const summaryMarkdown = `
 ### ASSAB ERP — Staging Smoke Verification Summary
-| Category | Count |
+| Category | Count / Status |
 | :--- | :--- |
-| **Overall Status** | **${report.summary.overallStatus}** |
+| **Overall Acceptance Status** | **${report.summary.overallStatus}** |
+| **Executed Checks Status** | **${report.summary.executedChecksStatus}** |
 | **PASS** | ${report.summary.passCount} |
 | **FAIL** | ${report.summary.failCount} |
 | **NOT_FOUND** | ${report.summary.notFoundCount} |
@@ -1093,6 +1151,9 @@ if (process.argv[1] && (process.argv[1].endsWith("smoke-test-staging.ts") || pro
       } else if (report.summary.overallStatus === "FAIL") {
         console.error("[smoke-test] Acceptance verification failed with errors or mismatches.");
         process.exit(1);
+      } else if (report.summary.overallStatus === "BLOCKED") {
+        console.warn(`[smoke-test] Operational acceptance BLOCKED by standing backend dependencies (E1/E2/E3). Executed checks: ${report.summary.executedChecksStatus}`);
+        process.exit(0);
       } else {
         console.log("[smoke-test] All acceptance checks PASSED.");
         process.exit(0);
