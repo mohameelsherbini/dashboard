@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -141,11 +142,15 @@ test("T029: S-1 Offline Unit Tests - verifyBalancedShift handles MATCH, MISMATCH
   const mismatchResult = verifyBalancedShift(mismatchPayload, "2026-10-24");
   assert.equal(mismatchResult.status, "MISMATCH");
   assert.equal(mismatchResult.shiftId, "shf-20261024-002");
-  assert.ok(mismatchResult.mismatches && mismatchResult.mismatches.length === 4);
-  assert.ok(mismatchResult.mismatches.some(m => m.field === "salesHalalas" && m.expected === 11500 && m.actual === 12000));
-  assert.ok(mismatchResult.mismatches.some(m => m.field === "cashActualHalalas" && m.expected === 4000 && m.actual === 3800));
-  assert.ok(mismatchResult.mismatches.some(m => m.field === "varianceHalalas" && m.expected === 0 && m.actual === -200));
-  assert.ok(mismatchResult.mismatches.some(m => m.field === "cashCountState" && m.expected === "counted" && m.actual === "unknown"));
+  const mismatches = mismatchResult.mismatches;
+  if (!mismatches) {
+    assert.fail("mismatchResult.mismatches must be defined");
+  }
+  assert.equal(mismatches.length, 4);
+  assert.ok(mismatches.some(m => m.field === "salesHalalas" && m.expected === 11500 && m.actual === 12000));
+  assert.ok(mismatches.some(m => m.field === "cashActualHalalas" && m.expected === 4000 && m.actual === 3800));
+  assert.ok(mismatches.some(m => m.field === "varianceHalalas" && m.expected === 0 && m.actual === -200));
+  assert.ok(mismatches.some(m => m.field === "cashCountState" && m.expected === "counted" && m.actual === "unknown"));
 
   // Case 3A: NOT_FOUND - Empty data array returned
   const notFoundEmpty = verifyBalancedShift({ data: [] }, "2026-10-24");
