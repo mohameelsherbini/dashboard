@@ -13,6 +13,7 @@ import { hasEmployeeDebitWarning } from "./_shared/formatters";
 import { api, generateCommandId } from "../../../api/client";
 import { toast } from "sonner";
 import { ErrorBoundary } from "../../ErrorBoundary";
+import { hasActiveSubscription } from "../../../api/responseContracts";
 import { useState, useMemo, useEffect, useLayoutEffect, useRef, ReactNode, createContext, useContext, type MouseEvent as ReactMouseEvent } from "react";
 import {
   useOperations, useApproveOperation, useRejectOperation, useBulkApprove, useFinalApprove, useBulkFinalApprove,
@@ -112,7 +113,7 @@ import {
   LayoutDashboard, Building2, Users, Settings, Bell, LogOut, ChevronRight,
   CheckCircle2, XCircle, TrendingUp, Plus, X, Edit2, FileText,
   Shield, Search, CreditCard, Package, Wallet, ShoppingCart, Clock,
-  BarChart3, AlertTriangle, Star, RefreshCw, ArrowLeftRight,
+  BarChart3, AlertTriangle, AlertCircle, Star, RefreshCw, ArrowLeftRight,
   Send, Check, Download, Zap, Lock, ChevronDown, ChevronUp,
   Eye, Paperclip, ThumbsUp, ThumbsDown, Upload, Clipboard,
   Home, RotateCcw, Filter, GitMerge, ArrowRightToLine, CheckSquare, Edit3,
@@ -2074,6 +2075,7 @@ function CADashboard({ navigate }:{ navigate:(p:string)=>void }) {
   const { t, dir, lang } = useCLang();
   const { data: apiDashboard } = useCompanyAdminDashboard();
   const { data: apiSub } = useCompanySubscription();
+  const hasActiveSub = hasActiveSubscription(apiSub);
   // All figures come from GET /company/me/dashboard + /subscription. No static fallback.
   const apiKpis = (apiDashboard?.kpis ?? {}) as Record<string, number | string>;
   const apiTotals = (apiDashboard?.totals ?? {}) as Record<string, number>;
@@ -2106,29 +2108,68 @@ function CADashboard({ navigate }:{ navigate:(p:string)=>void }) {
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-xl font-bold text-gray-800">{t("مرحباً،","Welcome,")} {apiDashboard?.company?.name ?? COMPANY.name} 🏢</h2>
-          <p className="text-gray-400 text-sm mt-0.5">{t("خطة","Plan")} {t(PLAN_AR[(apiDashboard?.company?.plan ?? COMPANY.plan)]||(apiDashboard?.company?.plan ?? COMPANY.plan), (apiDashboard?.company?.plan ?? COMPANY.plan))} · {branchesCount} {t("فرع","branches")} · {brandsCount} {t("علامات تجارية","brands")}</p>
+          <p className="text-gray-400 text-sm mt-0.5">
+            {hasActiveSub ? (
+              <>{t("خطة","Plan")} {t(PLAN_AR[apiSub?.planName || (apiDashboard?.company?.plan ?? COMPANY.plan)] || (apiSub?.planName || (apiDashboard?.company?.plan ?? COMPANY.plan)), (apiSub?.planName || (apiDashboard?.company?.plan ?? COMPANY.plan)))} · </>
+            ) : (
+              <span className="text-amber-600 font-medium">{t("بدون اشتراك نشط", "No active plan")} · </span>
+            )}
+            {branchesCount} {t("فرع","branches")} · {brandsCount} {t("علامات تجارية","brands")}
+          </p>
         </div>
         <button onClick={()=>navigate("ca-subscription")} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-bold hover:bg-purple-700 shadow-sm">
           <CreditCard size={14}/> {t("إدارة الاشتراك","Manage Subscription")}
         </button>
       </div>
-      <div className="bg-gradient-to-l from-purple-600 to-blue-700 rounded-2xl p-5 text-white">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <p className="font-bold text-lg">{apiSub?.planName || (apiDashboard?.company?.plan ? t(PLAN_AR[apiDashboard.company.plan]||apiDashboard.company.plan, apiDashboard.company.plan) : t("الخطة الحالية","Current Plan"))} — {t("نشطة ✅","Active ✅")}</p>
-            <p className="text-white/70 text-sm mt-0.5">{((apiSub as any)?.expiresAt || apiSub?.currentPeriodEnd) ? t(`ينتهي في ${String((apiSub as any)?.expiresAt || apiSub?.currentPeriodEnd).slice(0,10)} · متبقي `, `Expires ${String((apiSub as any)?.expiresAt || apiSub?.currentPeriodEnd).slice(0,10)} · `) : t("متبقي ", "Remaining ")}<span className="text-cyan-300 font-bold">{daysRemaining}</span> {t("يوم","days remaining")}</p>
-            <div className="flex items-center gap-6 mt-3 flex-wrap">
-              {statItems.map(([l,v])=>(
-                <div key={l}><p className="text-white/50 text-xs">{l}</p><p className="font-bold">{v}</p></div>
-              ))}
+      {!hasActiveSub ? (
+        <div className="bg-gradient-to-l from-amber-600 to-amber-700 rounded-2xl p-5 text-white shadow-sm" role="status">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-white shrink-0 mt-0.5">
+                <AlertCircle size={22} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="font-bold text-lg">{t("لا يوجد اشتراك نشط للمنشأة", "No Active Subscription")}</p>
+                  <span className="bg-amber-900/40 text-amber-100 text-[10px] px-2 py-0.5 rounded-full font-bold">{t("غير مجهّز", "Not Provisioned")}</span>
+                </div>
+                <p className="text-amber-100/90 text-sm mt-1 max-w-xl">
+                  {t(
+                    "لم يتم تجهيز أو تفعيل باقة اشتراك لهذه الشركة بعد. يرجى اختيار خطة لتفعيل الوصول إلى ميزات النظام والفروع.",
+                    "No subscription has been provisioned or activated for this company yet. Please choose a plan to activate features and branches."
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className={dir==="ltr"?"text-left":"text-right"}>
+              <button
+                onClick={() => navigate("ca-subscription")}
+                className="px-4 py-2 rounded-xl bg-white text-amber-900 hover:bg-amber-50 text-xs font-bold shadow-sm transition-all"
+              >
+                {t("اختيار وتفعيل باقة الاشتراك ←", "Choose & Activate Plan →")}
+              </button>
             </div>
           </div>
-          <div className={dir==="ltr"?"text-left":"text-right"}>
-            <p className="text-3xl font-black">{fmt(planPrice)} <span className="text-base font-normal text-white/60">{t("ر.س/سنة","SAR/year")}</span></p>
-            <button onClick={()=>navigate("ca-subscription")} className="mt-2 px-4 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-xs font-bold border border-white/30">{t("ترقية الخطة ↑","Upgrade Plan ↑")}</button>
+        </div>
+      ) : (
+        <div className="bg-gradient-to-l from-purple-600 to-blue-700 rounded-2xl p-5 text-white">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <p className="font-bold text-lg">{apiSub?.planName || (apiDashboard?.company?.plan ? t(PLAN_AR[apiDashboard.company.plan]||apiDashboard.company.plan, apiDashboard.company.plan) : t("الخطة الحالية","Current Plan"))} — {t("نشطة ✅","Active ✅")}</p>
+              <p className="text-white/70 text-sm mt-0.5">{((apiSub as any)?.expiresAt || apiSub?.currentPeriodEnd) ? t(`ينتهي في ${String((apiSub as any)?.expiresAt || apiSub?.currentPeriodEnd).slice(0,10)} · متبقي `, `Expires ${String((apiSub as any)?.expiresAt || apiSub?.currentPeriodEnd).slice(0,10)} · `) : t("متبقي ", "Remaining ")}<span className="text-cyan-300 font-bold">{daysRemaining}</span> {t("يوم","days remaining")}</p>
+              <div className="flex items-center gap-6 mt-3 flex-wrap">
+                {statItems.map(([l,v])=>(
+                  <div key={l}><p className="text-white/50 text-xs">{l}</p><p className="font-bold">{v}</p></div>
+                ))}
+              </div>
+            </div>
+            <div className={dir==="ltr"?"text-left":"text-right"}>
+              <p className="text-3xl font-black">{fmt(planPrice)} <span className="text-base font-normal text-white/60">{t("ر.س/سنة","SAR/year")}</span></p>
+              <button onClick={()=>navigate("ca-subscription")} className="mt-2 px-4 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-xs font-bold border border-white/30">{t("ترقية الخطة ↑","Upgrade Plan ↑")}</button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <KpiCard label={t("إجمالي المبيعات الشهرية","Monthly Total Sales")} value={`${fmt(Math.round(totalSalesM/1000))}K`} sub={t("ر.س هذا الشهر","SAR this month")} icon={<TrendingUp size={18} className="text-emerald-600"/>} accent="emerald"/>
         <KpiCard label={t("إجمالي المصروفات","Total Expenses")}            value={`${fmt(Math.round(totalExpM/1000))}K`}   sub={t("ر.س هذا الشهر","SAR this month")} icon={<Wallet size={18} className="text-red-500"/>}      accent="red"/>
@@ -2169,6 +2210,7 @@ function CASubscription() {
   const { data: apiPlans = [], isLoading: isPlansLoading, isError: isPlansError, error: plansError, refetch: refetchPlans } = useCompanyPlans();
   const [billing,setBilling]=useState<"annual"|"monthly">("annual");
   const plansList = Array.isArray(apiPlans) ? apiPlans : [];
+  const hasActiveSub = hasActiveSubscription(apiSub);
   // Driven by GET /plans. No static fallback.
   const plans = plansList.map(p => {
     const rawFeatures = Array.isArray(p.features) ? p.features : [];
@@ -2182,7 +2224,7 @@ function CASubscription() {
       price_m: p.priceMonthlyHalalas != null ? Math.round(p.priceMonthlyHalalas / 100) : null,
       price_a: p.priceAnnualHalalas  != null ? Math.round(p.priceAnnualHalalas  / 100) : null,
       features: normalizedFeatures,
-      current: p.isCurrent ?? false,
+      current: hasActiveSub ? (p.isCurrent ?? false) : false,
     };
   });
   const usage = (apiSub?.usage ?? {}) as Record<string, { used: number; max: number | null }>;
@@ -2195,8 +2237,8 @@ function CASubscription() {
   const storageMeter = usage.storage ?? (usage as any).storageGB;
   const storageUsed  = storageMeter?.used ?? 0;
   const storageMax   = storageMeter?.max ?? null; // null → unlimited («∞»)
-  const currentPlan = plansList.find(p => p.isCurrent);
-  const currentPlanName = apiSub?.planName ?? (currentPlan ? (lang === "ar" ? (currentPlan.nameAr || currentPlan.name) : (currentPlan.nameEn || currentPlan.name)) : "Professional");
+  const currentPlan = hasActiveSub ? plansList.find(p => p.isCurrent) : undefined;
+  const currentPlanName = apiSub?.planName || (currentPlan ? (lang === "ar" ? (currentPlan.nameAr || currentPlan.name) : (currentPlan.nameEn || currentPlan.name)) : "");
   const currentPriceAnnualObj = formatPlanPrice(currentPlan?.priceAnnualHalalas, lang);
   const currentPriceMonthlyObj = formatPlanPrice(currentPlan?.priceMonthlyHalalas, lang);
   const currentPlanPriceAnnual = currentPriceAnnualObj.formatted;
@@ -2245,29 +2287,75 @@ function CASubscription() {
           ))}
         </div>
       </div>
-      <div className="bg-white rounded-2xl border border-purple-100 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 bg-gradient-to-l from-purple-600 to-blue-700 text-white flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <div className="flex items-center gap-2"><span className="font-black text-xl">{t(PLAN_AR[currentPlanName]||currentPlanName, currentPlanName)}</span><Badge className="bg-white/20 text-white text-[10px]">{t("الخطة الحالية","Current Plan")}</Badge></div>
-            <p className="text-white/70 text-xs mt-0.5">{((apiSub as any)?.expiresAt || apiSub?.currentPeriodEnd) ? t(`ينتهي في ${String((apiSub as any)?.expiresAt || apiSub?.currentPeriodEnd).slice(0,10)}`, `Expires ${String((apiSub as any)?.expiresAt || apiSub?.currentPeriodEnd).slice(0,10)}`) : t("تجديد سنوي تلقائي","Annual auto-renew")}</p>
+      {!hasActiveSub ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-amber-900 shadow-sm" role="status">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
+                <AlertCircle size={22} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-amber-900">{t("لا يوجد اشتراك نشط للمنشأة", "No Active Subscription")}</h3>
+                  <Badge className="bg-amber-200 text-amber-800 text-[10px] font-bold">{t("غير مجهّز", "Not Provisioned")}</Badge>
+                </div>
+                <p className="text-xs text-amber-700 mt-1 max-w-xl leading-relaxed">
+                  {t(
+                    "لم يتم تجهيز أو تفعيل باقة اشتراك لهذه الشركة بعد. يرجى اختيار إحدى الخطط المتاحة أدناه للبدء في تفعيل اشتراكك.",
+                    "No subscription has been provisioned or activated for this company yet. Please choose an available plan below to get started."
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const el = document.getElementById("available-plans-grid");
+                  el?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm transition-all"
+              >
+                {t("عرض الخطط المتاحة ↓", "View Available Plans ↓")}
+              </button>
+            </div>
           </div>
-          <p className="text-2xl font-black">
-            {billing==="annual"?currentPlanPriceAnnual:currentPlanPriceMonthly}
-            {(!currentPriceAnnualObj.isCustom && !currentPriceMonthlyObj.isCustom) && (
-              <span className="text-sm font-normal text-white/60"> {SAR}/{billing==="annual"?perYear:perMonth}</span>
-            )}
-          </p>
         </div>
-        <div className="p-5 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-          {([[t("الفروع","Branches"),branchesUsed,branchesMax,"bg-blue-500"],[t("المستخدمون","Users"),usersUsed,usersMax,"bg-purple-500"],[t("التخزين (GB)","Storage (GB)"),storageUsed,storageMax,"bg-emerald-500"]] as [string,number,number|null,string][]).map(([l,u,m,c])=>{
-            const unlimited = m === null || m === undefined;   // T14.4 — unlimited plan → «/∞»
-            const pct = unlimited || Number(m) <= 0 ? 0 : Math.min(100, Math.round((Number(u)/Number(m))*100));
-            return (
-            <div key={String(l)}><div className="flex justify-between mb-1.5 text-xs font-semibold text-gray-600"><span>{l}</span><span>{u}/{unlimited?"∞":m}</span></div><div className="w-full h-2 bg-gray-100 rounded-full"><div className={`h-2 rounded-full ${c}`} style={{width:`${pct}%`}}/></div></div>
-          );})}
+      ) : (
+        <div className="bg-white rounded-2xl border border-purple-100 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 bg-gradient-to-l from-purple-600 to-blue-700 text-white flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2"><span className="font-black text-xl">{t(PLAN_AR[currentPlanName]||currentPlanName, currentPlanName)}</span><Badge className="bg-white/20 text-white text-[10px]">{t("الخطة الحالية","Current Plan")}</Badge></div>
+              <p className="text-white/70 text-xs mt-0.5">{((apiSub as any)?.expiresAt || apiSub?.currentPeriodEnd) ? t(`ينتهي في ${String((apiSub as any)?.expiresAt || apiSub?.currentPeriodEnd).slice(0,10)}`, `Expires ${String((apiSub as any)?.expiresAt || apiSub?.currentPeriodEnd).slice(0,10)}`) : t("تجديد سنوي تلقائي","Annual auto-renew")}</p>
+            </div>
+            <p className="text-2xl font-black">
+              {billing==="annual"?currentPlanPriceAnnual:currentPlanPriceMonthly}
+              {(!currentPriceAnnualObj.isCustom && !currentPriceMonthlyObj.isCustom) && (
+                <span className="text-sm font-normal text-white/60"> {SAR}/{billing==="annual"?perYear:perMonth}</span>
+              )}
+            </p>
+          </div>
+          <div className="p-5 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+            {([[t("الفروع","Branches"),branchesUsed,branchesMax,"bg-blue-500"],[t("المستخدمون","Users"),usersUsed,usersMax,"bg-purple-500"],[t("التخزين (GB)","Storage (GB)"),storageUsed,storageMax,"bg-emerald-500"]] as [string,number,number|null,string][]).map(([l,u,m,c])=>{
+              const unlimited = m === null || m === undefined;   // T14.4 — unlimited plan → «/∞»
+              const pct = unlimited || Number(m) <= 0 ? 0 : Math.min(100, Math.round((Number(u)/Number(m))*100));
+              return (
+              <div key={String(l)}><div className="flex justify-between mb-1.5 text-xs font-semibold text-gray-600"><span>{l}</span><span>{u}/{unlimited?"∞":m}</span></div><div className="w-full h-2 bg-gray-100 rounded-full"><div className={`h-2 rounded-full ${c}`} style={{width:`${pct}%`}}/></div></div>
+            );})}
+          </div>
         </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+      )}
+      {isSubError && (
+        <div role="alert" className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+            <span>{t("تعذر جلب تفاصيل الاشتراك الحالية من الخادم.", "Unable to fetch current subscription details from server.")} {getErrorMessage(subError, lang)}</span>
+          </div>
+          <button onClick={() => refetchSub()} className="px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 shrink-0">
+            {t("إعادة المحاولة", "Retry")}
+          </button>
+        </div>
+      )}
+      <div id="available-plans-grid" className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
         {plans.map(p=>(
           <div key={p.id} className={`bg-white rounded-2xl border-2 shadow-sm overflow-hidden ${p.current?"border-purple-400 shadow-purple-100":"border-gray-100"}`}>
             {p.current&&<div className="px-4 py-1.5 text-center text-xs font-bold bg-purple-600 text-white">⭐ {t("خطتك الحالية","Your Current Plan")}</div>}
@@ -2286,7 +2374,15 @@ function CASubscription() {
                 )}
               </div>
               <ul className="space-y-1.5 mb-5">{p.features.map((f, fi)=><li key={fi} className="flex items-center gap-2 text-xs text-gray-600"><Check size={11} className="text-emerald-500 flex-shrink-0"/>{f}</li>)}</ul>
-              {p.current?<div className="w-full py-2 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold text-center">{t("خطتك الحالية ✓","Your Current Plan ✓")}</div>:p.price_m===null?<button onClick={()=>contactMut.mutate({ message: t("استفسار عن خطة المؤسسات","Enterprise plan inquiry") })} className="w-full py-2 rounded-lg border-2 border-purple-300 text-purple-700 text-xs font-bold hover:bg-purple-50">{t("تواصل مع المبيعات","Contact Sales")}</button>:<button onClick={()=>upgradeMut.mutate({ planId: p.id, billingCycle: billing })} className="w-full py-2 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700">{t("ترقية ↑","Upgrade ↑")}</button>}
+              {p.current ? (
+                <div className="w-full py-2 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold text-center">{t("خطتك الحالية ✓","Your Current Plan ✓")}</div>
+              ) : p.price_m === null ? (
+                <button onClick={()=>contactMut.mutate({ message: t("استفسار عن خطة المؤسسات","Enterprise plan inquiry") })} className="w-full py-2 rounded-lg border-2 border-purple-300 text-purple-700 text-xs font-bold hover:bg-purple-50">{t("تواصل مع المبيعات","Contact Sales")}</button>
+              ) : (
+                <button onClick={()=>upgradeMut.mutate({ planId: p.id, billingCycle: billing })} className="w-full py-2 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700">
+                  {hasActiveSub ? t("ترقية ↑","Upgrade ↑") : t("اختيار الخطة","Select Plan")}
+                </button>
+              )}
             </div>
           </div>
         ))}

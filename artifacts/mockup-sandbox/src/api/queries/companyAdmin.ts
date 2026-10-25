@@ -176,8 +176,25 @@ export function useCompanySubscription() {
   return useQuery({
     queryKey: queryKeys.subscription,
     queryFn: async () => {
-      const res = await api.get<unknown>("/company/me/subscription");
-      return parseSubscriptionResponse(res.data);
+      try {
+        const res = await api.get<unknown>("/company/me/subscription");
+        return parseSubscriptionResponse(res.data);
+      } catch (err: any) {
+        if (
+          err?.response?.status === 404 ||
+          err?.status === 404 ||
+          err?.code === "NOT_FOUND" ||
+          err?.response?.data?.code === "NOT_FOUND"
+        ) {
+          // Company has no active subscription provisioned (NOT_FOUND)
+          return null;
+        }
+        throw err;
+      }
+    },
+    retry: (failureCount, error: any) => {
+      if (error?.response?.status === 404 || error?.status === 404) return false;
+      return failureCount < 2;
     },
   });
 }

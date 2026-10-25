@@ -85,13 +85,33 @@ export function parseSubscriptionResponse(payload: unknown): (Subscription & Rec
   }
 
   const obj = payload as Record<string, any>;
+
+  // Handle explicit NOT_FOUND / error envelope payloads
+  if (
+    obj.code === "NOT_FOUND" ||
+    obj.error === "NOT_FOUND" ||
+    (typeof obj.message === "string" && obj.message.includes("No subscription"))
+  ) {
+    return null;
+  }
+
+  // Handle explicit null subscription
+  if ("subscription" in obj && obj.subscription === null) {
+    return null;
+  }
+
   const isNested = Boolean(obj.subscription && typeof obj.subscription === "object");
   const s = isNested ? obj.subscription : obj;
   const p = isNested ? obj.plan : obj.plan;
   const u = isNested ? obj.usage : obj.usage;
   const inv = isNested ? obj.nextInvoice : obj.nextInvoice;
 
-  const planName = p?.nameAr || p?.name || p?.nameEn || s.planName || "Professional";
+  // If there is no identifier and no plan, this is an empty payload, not an active subscription
+  if (!s.id && !s.planId && !s.plan_id && !p?.id && !s.status) {
+    return null;
+  }
+
+  const planName = p?.nameAr || p?.name || p?.nameEn || s.planName || "";
 
   return {
     ...s,
@@ -102,7 +122,7 @@ export function parseSubscriptionResponse(payload: unknown): (Subscription & Rec
     planName,
     planNameAr: p?.nameAr,
     planNameEn: p?.nameEn,
-    status: s.status ?? "active",
+    status: s.status ?? "unknown",
     billingCycle: s.billingCycle ?? s.billing_cycle ?? "annual",
     currentPeriodStart: s.currentPeriodStart ?? s.current_period_start,
     currentPeriodEnd: s.currentPeriodEnd ?? s.current_period_end ?? "",
@@ -118,6 +138,18 @@ export function parseSubscriptionResponse(payload: unknown): (Subscription & Rec
     subscription: s,
     plan: p,
   };
+}
+
+/**
+ * Checks whether the subscription payload represents a provisioned, active/trialing subscription.
+ */
+export function hasActiveSubscription(sub: unknown): boolean {
+  if (!sub || typeof sub !== "object") return false;
+  const s = sub as Record<string, any>;
+  if (!s.id || s.id === "") return false;
+  if (s.status === "cancelled" || s.status === "inactive" || s.status === "not_found") return false;
+  if (s.status === "active" || s.status === "trialing") return true;
+  return Boolean(s.planName || s.planId);
 }
 
 /**
