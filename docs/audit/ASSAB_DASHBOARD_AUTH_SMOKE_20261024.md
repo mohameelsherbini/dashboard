@@ -151,15 +151,22 @@ To execute this workflow safely in `mahmoudmagdy200000-code/dashboard` without m
 1. **Enable Workflow UI on `main`**:
    Mahmoud only commits the single workflow YAML file `.github/workflows/assab-go17-staging-smoke.yml` to the default branch (`main`) of `mahmoudmagdy200000-code/dashboard`.
    *Zero application code, feature changes, or unverified files are merged into `main`.*
-2. **Configure Secrets**:
+2. **Hardcoded Audited Source & Tamper Prevention**:
+   The workflow checkout step is hardcoded strictly to `repository: "mohameelsherbini/dashboard"` and `ref: "4a4246b7b94153b5f34ff5f78d9095a82b1d6160"`.
+   *No `workflow_dispatch` inputs are allowed to override the repository or commit SHA with an unreviewed source.*
+3. **Pre-Execution Cryptographic SHA Verification**:
+   Before installing dependencies or accessing any staging secrets, the workflow executes:
+   `ACTUAL_SHA="$(git rev-parse HEAD)"` and fails closed if it does not match `4a4246b7b94153b5f34ff5f78d9095a82b1d6160`.
+4. **Decoupling Tested Source from Vercel Deployment**:
+   The tested Dashboard commit (`4a4246b7b94153b5f34ff5f78d9095a82b1d6160`) validates backend API contracts against Coolify Staging.
+   It is NOT proof that Vercel is serving this SHA. `ASSAB_FRONTEND_DEPLOYED_SHA` is explicitly set to `"PENDING_VERCEL_DEPLOYMENT_ATTESTATION"`, and Browser QA remains strictly `NOT_RUN` until Vercel deployment is proven.
+5. **Configure Secrets**:
    Ensure the GitHub Environment `assab-staging-smoke` in `mahmoudmagdy200000-code/dashboard` contains secrets:
    - `ASSAB_STAGING_PASSWORD` (Staging fixture password)
    - `ASSAB_ROLELESS_EMAIL` (Roleless test user email; if omitted, test safely records `BLOCKED`)
-3. **Trigger Workflow via `workflow_dispatch`**:
-   In GitHub Actions UI under "ASSAB ERP — Staging Read-Only Smoke & Compatibility", click "Run workflow" with inputs:
-   - `reviewed_dashboard_repository`: `mohameelsherbini/dashboard`
-   - `reviewed_dashboard_commit_sha`: (Sherbini's exact attested commit SHA)
+6. **Trigger Workflow via `workflow_dispatch`**:
+   In GitHub Actions UI under "ASSAB ERP — Staging Read-Only Smoke & Compatibility", click "Run workflow" with operational inputs:
    - `attested_deployed_backend_sha`: `26f86c683a17a8c5ebe19771186d6b35230d62cf`
    - `attested_frontend_staging_url`: (optional Vercel Staging URL)
-4. **Execution & Evidence**:
+7. **Execution & Evidence**:
    The workflow checks out Sherbini's exact audited code with `permissions: contents: read`. If operational acceptance is held on Backend E1/E2/E3, the step exits with code 3, and `if: always()` uploads the complete sanitized artifact `assab-smoke-evidence-<run_id>`.

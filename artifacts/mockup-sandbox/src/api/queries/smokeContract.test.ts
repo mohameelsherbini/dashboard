@@ -653,21 +653,39 @@ test("T034: Smoke Workflow Exit Code Propagation & Failure Safety", () => {
     "Evidence upload must execute on failure using if: always()",
   );
 
-  // 4. Pinned reviewed repository and commit SHA inputs are configured for cross-repo execution
+  // 4. Hardcoded reviewed repository and commit SHA prevent unreviewed input override
   assert.ok(
+    workflowContent.includes('repository: "mohameelsherbini/dashboard"'),
+    "Workflow checkout must be hardcoded to mohameelsherbini/dashboard",
+  );
+  assert.ok(
+    workflowContent.includes('ref: "4a4246b7b94153b5f34ff5f78d9095a82b1d6160"'),
+    "Workflow checkout must be hardcoded to reviewed commit SHA 4a4246b7b94153b5f34ff5f78d9095a82b1d6160",
+  );
+  assert.equal(
     workflowContent.includes("reviewed_dashboard_commit_sha:"),
-    "Workflow must define reviewed_dashboard_commit_sha input",
+    false,
+    "Workflow inputs must NOT allow overriding reviewed commit SHA",
   );
-  assert.ok(
+  assert.equal(
     workflowContent.includes("reviewed_dashboard_repository:"),
-    "Workflow must define reviewed_dashboard_repository input",
+    false,
+    "Workflow inputs must NOT allow overriding reviewed repository",
+  );
+
+  // 5. Verification step checks git rev-parse HEAD before running with secrets
+  assert.ok(
+    workflowContent.includes("git rev-parse HEAD"),
+    "Workflow must verify actual checked out SHA via git rev-parse HEAD",
   );
   assert.ok(
-    workflowContent.includes("repository: ${{ inputs.reviewed_dashboard_repository"),
-    "Workflow checkout must target inputs.reviewed_dashboard_repository",
+    workflowContent.includes("4a4246b7b94153b5f34ff5f78d9095a82b1d6160"),
+    "Workflow must assert checked out SHA matches 4a4246b7b94153b5f34ff5f78d9095a82b1d6160",
   );
+
+  // 6. Checked-out code SHA is NOT conflated with Vercel deployment SHA
   assert.ok(
-    workflowContent.includes("ref: ${{ inputs.reviewed_dashboard_commit_sha"),
-    "Workflow checkout must pin ref to inputs.reviewed_dashboard_commit_sha",
+    workflowContent.includes('ASSAB_FRONTEND_DEPLOYED_SHA: "PENDING_VERCEL_DEPLOYMENT_ATTESTATION"'),
+    "ASSAB_FRONTEND_DEPLOYED_SHA must remain unproven/pending rather than falsely adopting code commit SHA",
   );
 });

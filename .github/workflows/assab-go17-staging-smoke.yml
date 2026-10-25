@@ -29,16 +29,6 @@ name: ASSAB ERP — Staging Read-Only Smoke & Compatibility
 on:
   workflow_dispatch:
     inputs:
-      reviewed_dashboard_commit_sha:
-        description: "Exact audited Dashboard commit SHA from Sherbini (GO-19)"
-        required: true
-        type: string
-        default: "a2120f9461149908fc92e129c0a04775fc8636eb"
-      reviewed_dashboard_repository:
-        description: "Repository containing the audited Dashboard commit"
-        required: true
-        type: string
-        default: "mohameelsherbini/dashboard"
       attested_deployed_backend_sha:
         description: "Confirmed Coolify Backend deployment SHA (from Coolify logs by Mahmoud)"
         required: true
@@ -68,16 +58,28 @@ jobs:
       - name: Check out reviewed Dashboard commit
         uses: actions/checkout@v4
         with:
-          repository: ${{ inputs.reviewed_dashboard_repository || 'mohameelsherbini/dashboard' }}
-          ref: ${{ inputs.reviewed_dashboard_commit_sha || github.sha }}
+          repository: "mohameelsherbini/dashboard"
+          ref: "4a4246b7b94153b5f34ff5f78d9095a82b1d6160"
           persist-credentials: false
+
+      - name: Cryptographically verify checked-out commit matches audited SHA
+        run: |
+          set -euo pipefail
+          EXPECTED_AUDITED_SHA="4a4246b7b94153b5f34ff5f78d9095a82b1d6160"
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          echo "Expected Audited SHA: $EXPECTED_AUDITED_SHA"
+          echo "Actual Checked-Out SHA: $ACTUAL_SHA"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_AUDITED_SHA" ]; then
+            echo "::error::Security gate blocked: Checked out commit ($ACTUAL_SHA) does not match audited SHA ($EXPECTED_AUDITED_SHA). Refusing to run with secrets."
+            exit 1
+          fi
+          echo "Security verification passed: Exact audited commit confirmed."
 
       - name: Fail closed if secrets or deployment attestation are missing
         env:
           CONFIRMED_BACKEND_SHA: "26f86c683a17a8c5ebe19771186d6b35230d62cf"
           INPUT_BACKEND_SHA: ${{ inputs.attested_deployed_backend_sha }}
           STAGING_PASSWORD: ${{ secrets.ASSAB_STAGING_PASSWORD || secrets.ASSAB_E2E_FIXTURE_PASSWORD }}
-          REVIEWED_COMMIT_SHA: ${{ inputs.reviewed_dashboard_commit_sha || github.sha }}
         run: |
           set -euo pipefail
           echo "Verifying environment prerequisites..."
@@ -89,11 +91,7 @@ jobs:
             echo "::error::Attested Backend SHA ($INPUT_BACKEND_SHA) does not match confirmed Coolify SHA ($CONFIRMED_BACKEND_SHA)."
             exit 1
           fi
-          if [ -z "$REVIEWED_COMMIT_SHA" ] || [ "${#REVIEWED_COMMIT_SHA}" -lt 40 ]; then
-            echo "::error::Reviewed Dashboard commit SHA must be a full 40-character commit hash."
-            exit 1
-          fi
-          echo "Prerequisites verified: Backend SHA confirmed, reviewed commit SHA pinned ($REVIEWED_COMMIT_SHA), and credentials present."
+          echo "Prerequisites verified: Backend SHA confirmed ($CONFIRMED_BACKEND_SHA) and credentials present."
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -124,7 +122,7 @@ jobs:
           ASSAB_ROLELESS_EMAIL: ${{ secrets.ASSAB_ROLELESS_EMAIL || '' }}
           ASSAB_VERCEL_FRONTEND_URL: ${{ inputs.attested_frontend_staging_url }}
           ASSAB_BACKEND_DEPLOYED_SHA: ${{ inputs.attested_deployed_backend_sha }}
-          ASSAB_FRONTEND_DEPLOYED_SHA: ${{ inputs.reviewed_dashboard_commit_sha || github.sha }}
+          ASSAB_FRONTEND_DEPLOYED_SHA: "PENDING_VERCEL_DEPLOYMENT_ATTESTATION"
           ASSAB_DEPLOYMENT_ATTESTED: "true"
         run: |
           set -o pipefail
