@@ -74,10 +74,10 @@ const USEFUL_LIFE_OPTS = [
 ];
 
 function ConvertToAssetModal({
-  expenseOpId, invNum, vendor, desc, amount, branch, date,
+  expenseOpId, invoiceIndex, invNum, vendor, desc, amount, branch, date,
   onClose, onSuccess,
 }: {
-  expenseOpId: string; invNum: string; vendor: string; desc: string;
+  expenseOpId: string; invoiceIndex?: number; invNum: string; vendor: string; desc: string;
   amount: number; branch: string; date: string;
   onClose: () => void; onSuccess: (draftId: string) => void;
 }) {
@@ -100,7 +100,7 @@ function ConvertToAssetModal({
   const handleConfirm = () => {
     const draftId = `DRAFT-${invNum}-${Date.now()}`;
     addDraft({
-      draftId, expenseOpId, invNum, vendor, desc,
+      draftId, expenseOpId, invoiceIndex: invoiceIndex ?? 0, invNum, vendor, desc,
       amount, expenseBranch: branch, expenseDate: date,
       assetName: assetName.trim(), cat, usefulLife,
       targetBranches, custodian, qty, notes,
@@ -344,7 +344,7 @@ export function AccExpensesPage({ navigate, setModal, setDetailId, ops, approveO
   const [selectedDay, setSelectedDay] = useState("all");
   const [verifiedInvoices, setVerifiedInvoices] = useState<Record<string, boolean>>({});
   const [attachModal, setAttachModal] = useState<{ opId: string; invNum: string; idx: number; files: AttFile[] } | null>(null);
-  const [convertModal, setConvertModal] = useState<{ opId: string; invNum: string; vendor: string; desc: string; amount: number; branch: string; date: string } | null>(null);
+  const [convertModal, setConvertModal] = useState<{ opId: string; invoiceIndex: number; invNum: string; vendor: string; desc: string; amount: number; branch: string; date: string } | null>(null);
   const convertedInvNums = getConvertedInvNums();
 
   // Real per-invoice detail for the currently-expanded op (T05 §1) —
@@ -677,7 +677,7 @@ export function AccExpensesPage({ navigate, setModal, setDetailId, ops, approveO
                                   </span>
                                 ) : (
                                   <button
-                                    onClick={() => setConvertModal({ opId: op.id, invNum: inv.invNum, vendor: inv.vendor, desc: inv.desc, amount: inv.amount, branch: op.branch, date: inv.date })}
+                                    onClick={() => setConvertModal({ opId: op.id, invoiceIndex: invIndex, invNum: inv.invNum, vendor: inv.vendor, desc: inv.desc, amount: inv.amount, branch: op.branch, date: inv.date })}
                                     title={t("تحويل هذه الفاتورة إلى أصل ثابت", "Convert this invoice to a fixed asset")}
                                     className="group inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border-2 border-dashed border-purple-200 text-purple-400 hover:border-purple-500 hover:bg-purple-50 hover:text-purple-700 transition-all">
                                     <ArrowRightToLine size={11} />
@@ -814,6 +814,7 @@ export function AccExpensesPage({ navigate, setModal, setDetailId, ops, approveO
       {convertModal && (
         <ConvertToAssetModal
           expenseOpId={convertModal.opId}
+          invoiceIndex={convertModal.invoiceIndex}
           invNum={convertModal.invNum}
           vendor={convertModal.vendor}
           desc={convertModal.desc}
