@@ -8503,8 +8503,6 @@ function ProcNew() {
   const parsedPrice = parseFloat(orderForm.unitPrice);
   const hasValidCalculation = !isNaN(parsedQty) && parsedQty > 0 && !isNaN(parsedPrice) && parsedPrice > 0;
   const subtotalSar = hasValidCalculation ? parsedQty * parsedPrice : 0;
-  const estimatedVatSar = hasValidCalculation ? subtotalSar * 0.15 : 0;
-  const estimatedTotalSar = subtotalSar + estimatedVatSar;
 
   return (
     <div className="space-y-5" dir={dir}>
@@ -8592,18 +8590,11 @@ function ProcNew() {
               </div>
               {hasValidCalculation && (
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs space-y-1">
-                  <div className="flex justify-between text-gray-600">
-                    <span>{t("المجموع قبل الضريبة (ر.س)","Subtotal (SAR)")}:</span>
-                    <span className="font-mono font-bold">{subtotalSar.toFixed(2)}</span>
+                  <div className="flex justify-between text-gray-800 font-bold">
+                    <span>{t("إجمالي أمر الشراء (قبل الضريبة)","Purchase Order Total (Excl. VAT)")}:</span>
+                    <span className="font-mono">{subtotalSar.toFixed(2)} {SAR}</span>
                   </div>
-                  <div className="flex justify-between text-amber-700">
-                    <span>{t("ضريبة القيمة المضافة التقديرية (15% منفصلة وفق PUR-05)","Estimated VAT (15% separate per PUR-05)")}:</span>
-                    <span className="font-mono font-bold">{estimatedVatSar.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-gray-900 border-t border-gray-200 pt-1 font-bold">
-                    <span>{t("الإجمالي التقديري شامل الضريبة","Estimated Total Incl. VAT")}:</span>
-                    <span className="font-mono">{estimatedTotalSar.toFixed(2)} {SAR}</span>
-                  </div>
+                  <p className="text-[10px] text-gray-500">{t("يتم تحديد الضريبة رسمياً عند استلام فاتورة المورد وفق PUR-05", "VAT is officially determined upon receipt of supplier invoice per PUR-05")}</p>
                 </div>
               )}
               <div><label htmlFor="po-notes" className="text-xs font-semibold text-gray-600 block mb-1">{t("ملاحظات (اختياري)","Notes (optional)")}</label><textarea id="po-notes" rows={2} value={orderForm.notes} onChange={e=>setOrderForm(f=>({...f,notes:e.target.value}))} className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none resize-none"/></div>
