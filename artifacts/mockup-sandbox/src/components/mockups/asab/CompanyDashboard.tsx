@@ -2167,15 +2167,23 @@ function CASubscription() {
   const { data: apiSub } = useCompanySubscription();
   const { data: apiPlans = [] } = useCompanyPlans();
   const [billing,setBilling]=useState<"annual"|"monthly">("annual");
-  // Driven by GET /company/plans. No static fallback.
-  const plans = apiPlans.map(p => ({
-    id: p.id,
-    plan: p.name,
-    price_m: p.priceMonthlyHalalas != null ? Math.round(p.priceMonthlyHalalas / 100) : null,
-    price_a: p.priceAnnualHalalas  != null ? Math.round(p.priceAnnualHalalas  / 100) : null,
-    features: p.features ?? [],
-    current: p.isCurrent ?? false,
-  }));
+  const plansList = Array.isArray(apiPlans) ? apiPlans : [];
+  // Driven by GET /plans. No static fallback.
+  const plans = plansList.map(p => {
+    const rawFeatures = Array.isArray(p.features) ? p.features : [];
+    const normalizedFeatures: string[] = rawFeatures.map((f: any) =>
+      typeof f === "string" ? f : (lang === "ar" ? (f?.labelAr || f?.labelEn || "") : (f?.labelEn || f?.labelAr || ""))
+    ).filter(Boolean);
+    const planName = lang === "ar" ? (p.nameAr || p.name || p.nameEn || p.code || "") : (p.nameEn || p.name || p.nameAr || p.code || "");
+    return {
+      id: p.id,
+      plan: planName,
+      price_m: p.priceMonthlyHalalas != null ? Math.round(p.priceMonthlyHalalas / 100) : null,
+      price_a: p.priceAnnualHalalas  != null ? Math.round(p.priceAnnualHalalas  / 100) : null,
+      features: normalizedFeatures,
+      current: p.isCurrent ?? false,
+    };
+  });
   const usage = (apiSub?.usage ?? {}) as Record<string, { used: number; max: number | null }>;
   const branchesUsed = usage.branches?.used ?? 0;
   const branchesMax  = usage.branches?.max  ?? 0;
@@ -2183,11 +2191,11 @@ function CASubscription() {
   const usersMax     = usage.users?.max     ?? 0;
   // T14.4 — storage quota is now `usage.storage {used, max(GB)}` (max null = unlimited).
   // Fall back to the legacy `storageGB` key for older payloads.
-  const storageMeter = usage.storage ?? usage.storageGB;
+  const storageMeter = usage.storage ?? (usage as any).storageGB;
   const storageUsed  = storageMeter?.used ?? 0;
   const storageMax   = storageMeter?.max ?? null; // null → unlimited («∞»)
-  const currentPlanName = apiSub?.planName ?? "Professional";
-  const currentPlan = apiPlans.find(p => p.isCurrent);
+  const currentPlan = plansList.find(p => p.isCurrent);
+  const currentPlanName = apiSub?.planName ?? (currentPlan ? (lang === "ar" ? (currentPlan.nameAr || currentPlan.name) : (currentPlan.nameEn || currentPlan.name)) : "Professional");
   const currentPriceAnnualObj = formatPlanPrice(currentPlan?.priceAnnualHalalas, lang);
   const currentPriceMonthlyObj = formatPlanPrice(currentPlan?.priceMonthlyHalalas, lang);
   const currentPlanPriceAnnual = currentPriceAnnualObj.formatted;
@@ -2246,7 +2254,7 @@ function CASubscription() {
                   </>
                 )}
               </div>
-              <ul className="space-y-1.5 mb-5">{p.features.map(f=><li key={f} className="flex items-center gap-2 text-xs text-gray-600"><Check size={11} className="text-emerald-500 flex-shrink-0"/>{f}</li>)}</ul>
+              <ul className="space-y-1.5 mb-5">{p.features.map((f, fi)=><li key={fi} className="flex items-center gap-2 text-xs text-gray-600"><Check size={11} className="text-emerald-500 flex-shrink-0"/>{f}</li>)}</ul>
               {p.current?<div className="w-full py-2 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold text-center">{t("خطتك الحالية ✓","Your Current Plan ✓")}</div>:p.price_m===null?<button onClick={()=>contactMut.mutate({ message: t("استفسار عن خطة المؤسسات","Enterprise plan inquiry") })} className="w-full py-2 rounded-lg border-2 border-purple-300 text-purple-700 text-xs font-bold hover:bg-purple-50">{t("تواصل مع المبيعات","Contact Sales")}</button>:<button onClick={()=>upgradeMut.mutate({ planId: p.id, billingCycle: billing })} className="w-full py-2 rounded-lg bg-purple-600 text-white text-xs font-bold hover:bg-purple-700">{t("ترقية ↑","Upgrade ↑")}</button>}
             </div>
           </div>
@@ -2267,11 +2275,13 @@ function CAUsers() {
   const resendInviteMut = useResendCompanyInvitation();  // T14.2 — re-email + extend expiry
   const revokeInviteMut = useRevokeCompanyInvitation();
   // T14.2 — pending invitations are email-only; no token is exposed by the API.
-  const pendingInvites = (apiInvites as any[]).filter(i=>i.status==="pending");
+  const rawInvites = Array.isArray(apiInvites) ? apiInvites : [];
+  const pendingInvites = rawInvites.filter(i=>i.status==="pending");
   const ROLE_AR: Record<string,string> = { head:"رئيس الحسابات", accountant:"محاسب", branch:"مدير فرع", procurement:"مدير مشتريات" };
   // Driven by GET /company/me/users. No static seed.
   const [localUsers,setLocalUsers]=useState<U[]>([]);
-  const users: U[] = apiUsers.map((u): U => ({
+  const rawUsers = Array.isArray(apiUsers) ? apiUsers : [];
+  const users: U[] = rawUsers.map((u): U => ({
     id: u.id,
     name: u.name,
     role: u.roleLabel || u.roleKey,
@@ -2282,6 +2292,8 @@ function CAUsers() {
   }));
   const { data: brandLookup = [] } = useLookup("brands");
   const { data: branchLookup = [] } = useLookup("branches");
+  const brandOptions = Array.isArray(brandLookup) ? brandLookup : [];
+  const branchOptions = Array.isArray(branchLookup) ? branchLookup : [];
   const [showAdd,setShowAdd]=useState(false);
   const [search,setSearch]=useState("");
   const [inviteForm,setInviteForm]=useState<{
@@ -2491,7 +2503,7 @@ function CAUsers() {
                     className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none"
                   >
                     <option value="">{t("اختر العلامة التجارية...","Select brand...")}</option>
-                    {(brandLookup as any[]).map((b: any)=>(
+                    {brandOptions.map((b: any)=>(
                       <option key={b.id} value={b.id}>{b.nameAr || b.name}</option>
                     ))}
                   </select>
@@ -2506,7 +2518,7 @@ function CAUsers() {
                     className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none"
                   >
                     <option value="">{t("اختر الفرع...","Select branch...")}</option>
-                    {(branchLookup as any[]).map((br: any)=>(
+                    {branchOptions.map((br: any)=>(
                       <option key={br.id} value={br.id}>{br.nameAr || br.name}</option>
                     ))}
                   </select>
@@ -2537,11 +2549,12 @@ function CABranches() {
   type BTBranch = { id:string; name:string; city:string; mgr:string; mgrUserId?:string; salesM:number; target:number; reviewStatus?:string };
   type BTRest = { id:string; name:string; branches:BTBranch[] };
   type BTBrand = { id:string; name:string; abbr:string; color:string; restaurants:BTRest[] };
-  const brandsTree: BTBrand[] = (apiBrandsTree as any[]).map((b:any)=>({
+  const rawBrandsTree = Array.isArray(apiBrandsTree) ? apiBrandsTree : [];
+  const brandsTree: BTBrand[] = rawBrandsTree.map((b:any)=>({
     id: b.id, name: b.name, abbr: b.abbr ?? (b.name ?? "؟").toString().slice(0,2), color: b.color ?? "#7C3AED",
-    restaurants: (b.restaurants ?? []).map((r:any):BTRest=>({
+    restaurants: (Array.isArray(b.restaurants) ? b.restaurants : []).map((r:any):BTRest=>({
       id: r.id, name: r.name,
-      branches: (r.branches ?? []).map((br:any):BTBranch=>({
+      branches: (Array.isArray(r.branches) ? r.branches : []).map((br:any):BTBranch=>({
         id: br.id, name: br.name, city: br.city ?? "", mgr: br.managerName ?? "—", mgrUserId: br.managerUserId,
         salesM: Math.round((br.monthlySalesHalalas ?? 0)/100),
         target: Math.round((br.monthlyTargetHalalas ?? 0)/100),
@@ -2757,7 +2770,8 @@ function CAModules() {
   // Driven by GET /company/me/modules. No static seed.
   const [localMods,setLocalMods]=useState<Mod[]>([]);
   const ICONS:Record<string,string> = { sales:"💰", expenses:"💸", purchases:"🛒", inventory:"📦", assets:"🏢", shifts:"🕐", waste:"🗑", emp:"👥", cash:"💵" };
-  const mods: Mod[] = apiMods.map((m): Mod => ({
+  const rawMods = Array.isArray(apiMods) ? apiMods : [];
+  const mods: Mod[] = rawMods.map((m): Mod => ({
     id: m.moduleKey,
     nameAr: m.nameAr || m.moduleKey,
     nameEn: m.nameEn || m.moduleKey,

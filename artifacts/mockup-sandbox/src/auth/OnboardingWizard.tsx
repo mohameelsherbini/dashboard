@@ -503,7 +503,7 @@ function PlanCard({
           }}
         >
           <span style={{ color: "#00D9FF" }}>✓</span>
-          <span>{f}</span>
+          <span>{typeof f === "string" ? f : ((f as any)?.labelAr || (f as any)?.labelEn || "")}</span>
         </div>
       ))}
       {plan.maxBranches != null && (

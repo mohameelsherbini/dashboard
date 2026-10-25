@@ -6,15 +6,16 @@ import type {
   RejectionReasonOption,
 } from "../types/company";
 import { queryKeys, type LookupType } from "./keys";
+import { parseLookupsResponse } from "../responseContracts";
 
 export function useLookup(type: LookupType, params?: Record<string, unknown>) {
   return useQuery({
     queryKey: queryKeys.lookup(type, params),
     queryFn: async () => {
-      const res = await api.get<LookupRow[]>(`/company/me/lookups/${type}`, {
+      const res = await api.get<unknown>(`/company/me/lookups/${type}`, {
         params,
       });
-      return res.data;
+      return parseLookupsResponse(res.data, type);
     },
     staleTime: 5 * 60_000, // lookups change infrequently
   });
