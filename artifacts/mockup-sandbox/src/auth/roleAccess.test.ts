@@ -575,7 +575,7 @@ test("actual CompanyDashboard component boundary does not mount accountant draft
     "React","useState","useEffect","useRef","useQueryClient","useAuth","useCLang","readEntrySelection",
     "chooseGrantedRole","companyRoles","grantedRoleKeys","pageForRole","DEFAULT_PAGE",
     "useSharedOps","financialAccessFingerprint","Shell","PageRouter","RejectModal","ClarifyModal","LiveChatWidget",
-    "CAssetDraftProvider",compiled + "\nreturn CompanyDashboardInner;",
+    "CAssetDraftProvider","ErrorBoundary",compiled + "\nreturn CompanyDashboardInner;",
   )(React,React.useState,React.useEffect,React.useRef,()=>({}),
     ()=>({user:current,logout:async()=>{}}),()=>({t:(ar:string)=>ar}),()=>null,
     chooseGrantedRole,companyRoles,grantedRoleKeys,pageForRole,
@@ -586,6 +586,7 @@ test("actual CompanyDashboard component boundary does not mount accountant draft
     financialAccessFingerprint,Shell,({role}:{role:string})=>React.createElement("p",null,role),
     ()=>{dialogs.push("reject");return null;},
     ()=>{dialogs.push("clarify");return null;},()=>null,CAssetDraftProvider,
+    ({children}:{children:React.ReactNode})=>React.createElement("div",null,children),
   ) as React.ComponentType;
   assert.match(renderToStaticMarkup(React.createElement(CompanyDashboardInner)),/company-admin/);
   assert.deepEqual(dialogs,[]);
@@ -657,14 +658,15 @@ test("CompanyDashboard role switch hides populated ops and purges cache before s
   const subject = identity([grant("head"),grant("accountant","brand",[brandA])]);
   let stateIndex = 0;
   const state = (initial:unknown) => {
+    const value = typeof initial === "function" ? (initial as () => unknown)() : initial;
     const index = stateIndex++;
-    return [initial,(value:unknown)=>events.push(`state${index}:${String(value)}`)];
+    return [value,(val:unknown)=>events.push(`state${index}:${String(val)}`)];
   };
   const Inner = new Function("React","useState","useEffect","useRef","useQueryClient",
     "useAuth","useCLang","readEntrySelection","chooseGrantedRole","companyRoles",
     "grantedRoleKeys","pageForRole","DEFAULT_PAGE","useSharedOps","financialAccessFingerprint","Shell",
     "PageRouter","RejectModal","ClarifyModal","LiveChatWidget","CAssetDraftProvider",
-    "purgeFinancialQueries",compiled + "\nreturn CompanyDashboardInner;",
+    "purgeFinancialQueries","ErrorBoundary",compiled + "\nreturn CompanyDashboardInner;",
   )(React,state,()=>{},(value:unknown)=>({current:value}),()=>({}),
     ()=>({user:subject,logout:async()=>{}}),()=>({t:(ar:string)=>ar}),()=>null,
     chooseGrantedRole,companyRoles,grantedRoleKeys,pageForRole,
@@ -681,6 +683,7 @@ test("CompanyDashboard role switch hides populated ops and purges cache before s
     ({ops}:{ops:Array<{id:string}>})=>React.createElement("span",null,ops.map(op=>op.id).join(",")),
     ()=>null,()=>null,()=>null,({children}:{children:React.ReactNode})=>children,
     async()=>{events.push("purge");},
+    ({children}:{children:React.ReactNode})=>React.createElement("div",null,children),
   ) as React.ComponentType;
   assert.match(renderToStaticMarkup(React.createElement(Inner)),/sensitive-op/);
   await selectRole("accountant");
