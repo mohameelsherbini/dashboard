@@ -648,118 +648,6 @@ function CPipelineOverview({ ops }: { ops: COp[] }) {
   );
 }
 
-const INITIAL_OPS:COp[] = [
-  // Sales
-  { id:"O-2401",branch:"فرع العليا",   brandName:"برغر التاج",      brandColor:"#E53E3E",module:"sales",   moduleLabel:"مبيعات",  amount:18340,timeAgo:"قبل ساعة",   status:"pending",       attachments:3,match:"exact",  submittedBy:"فاطمة السالم", date:"21 مارس",refNum:"SL-2401",
-    channels:[
-      { name:"كاشير (POS)",    icon:"🖥️", pos:4200,  actual:4200  },
-      { name:"نقل بنكي (Mada)",icon:"💳", pos:8500,  actual:8500  },
-      { name:"طلبات",          icon:"🔴", pos:980,   actual:980   },
-      { name:"هنقرستيشن",      icon:"🟠", pos:2800,  actual:2800  },
-      { name:"جاهز",           icon:"🟡", pos:1200,  actual:1200  },
-      { name:"نينجا",          icon:"⚫", pos:660,   actual:660   },
-    ]},
-  { id:"O-2400",branch:"فرع الحمراء", brandName:"برغر التاج",       brandColor:"#E53E3E",module:"sales",   moduleLabel:"مبيعات",  amount:22100,timeAgo:"قبل 2 ساعة",status:"pending",       attachments:2,match:"review", submittedBy:"خالد العتيبي",  date:"21 مارس",refNum:"SL-2400", diff:"فارق بسيط في الكاش",
-    channels:[
-      { name:"كاشير (POS)",    icon:"🖥️", pos:5200,  actual:4850  },
-      { name:"نقل بنكي (Mada)",icon:"💳", pos:9800,  actual:9800  },
-      { name:"طلبات",          icon:"🔴", pos:1400,  actual:1400  },
-      { name:"هنقرستيشن",      icon:"🟠", pos:3800,  actual:3800  },
-      { name:"جاهز",           icon:"🟡", pos:1650,  actual:1650  },
-      { name:"نينجا",          icon:"⚫", pos:600,   actual:600   },
-    ]},
-  { id:"O-2399",branch:"فرع الملقا",  brandName:"بيتزا التاج",      brandColor:"#2B6CB0",module:"sales",   moduleLabel:"مبيعات",  amount:15820,timeAgo:"قبل 4 ساعات",status:"pending",       attachments:1,match:"exact",  submittedBy:"أحمد الحربي",  date:"21 مارس",refNum:"SL-2399",
-    channels:[
-      { name:"كاشير (POS)",    icon:"🖥️", pos:3400,  actual:3400  },
-      { name:"نقل بنكي (Mada)",icon:"💳", pos:6200,  actual:6200  },
-      { name:"طلبات",          icon:"🔴", pos:1800,  actual:1800  },
-      { name:"هنقرستيشن",      icon:"🟠", pos:2420,  actual:2420  },
-      { name:"جاهز",           icon:"🟡", pos:1300,  actual:1300  },
-      { name:"نينجا",          icon:"⚫", pos:700,   actual:700   },
-    ]},
-  { id:"O-2398",branch:"فرع الورود",  brandName:"مطعم التاج الراقي",brandColor:"#805AD5",module:"sales",   moduleLabel:"مبيعات",  amount:31500,timeAgo:"قبل 5 ساعات",status:"pending",       attachments:3,match:"diff",   submittedBy:"منى الزهراني", date:"21 مارس",refNum:"SL-2398", diff:"الكاش يختلف بـ 350 ر.س",
-    channels:[
-      { name:"كاشير (POS)",    icon:"🖥️", pos:7500,  actual:7150  },
-      { name:"نقل بنكي (Mada)",icon:"💳", pos:12000, actual:12000 },
-      { name:"طلبات",          icon:"🔴", pos:3200,  actual:3200  },
-      { name:"هنقرستيشن",      icon:"🟠", pos:4800,  actual:4800  },
-      { name:"جاهز",           icon:"🟡", pos:2500,  actual:2500  },
-      { name:"نينجا",          icon:"⚫", pos:1500,  actual:1500  },
-    ]},
-  { id:"O-2397",branch:"فرع الكورنيش",brandName:"بيتزا التاج",      brandColor:"#2B6CB0",module:"sales",   moduleLabel:"مبيعات",  amount:12400,timeAgo:"أمس",         status:"approved",      attachments:2,match:"exact",  submittedBy:"عبدالله الدوسري",date:"20 مارس",refNum:"SL-2397",
-    channels:[
-      { name:"كاشير (POS)",    icon:"🖥️", pos:2800,  actual:2800  },
-      { name:"نقل بنكي (Mada)",icon:"💳", pos:5200,  actual:5200  },
-      { name:"طلبات",          icon:"🔴", pos:1100,  actual:1100  },
-      { name:"هنقرستيشن",      icon:"🟠", pos:1800,  actual:1800  },
-      { name:"جاهز",           icon:"🟡", pos:900,   actual:900   },
-      { name:"نينجا",          icon:"⚫", pos:600,   actual:600   },
-    ]},
-  { id:"O-2396",branch:"فرع الملك فهد",brandName:"مطعم التاج الراقي",brandColor:"#805AD5",module:"sales",  moduleLabel:"مبيعات",  amount:28900,timeAgo:"أمس",         status:"final-approved",attachments:3,match:"exact",  submittedBy:"وليد السبيعي", date:"20 مارس",refNum:"SL-2396",
-    channels:[
-      { name:"كاشير (POS)",    icon:"🖥️", pos:6500,  actual:6500  },
-      { name:"نقل بنكي (Mada)",icon:"💳", pos:11000, actual:11000 },
-      { name:"طلبات",          icon:"🔴", pos:2800,  actual:2800  },
-      { name:"هنقرستيشن",      icon:"🟠", pos:4800,  actual:4800  },
-      { name:"جاهز",           icon:"🟡", pos:2200,  actual:2200  },
-      { name:"نينجا",          icon:"⚫", pos:1600,  actual:1600  },
-    ]},
-  { id:"O-2395",branch:"فرع النزهة",  brandName:"برغر التاج",       brandColor:"#E53E3E",module:"sales",   moduleLabel:"مبيعات",  amount:9800, timeAgo:"قبل يومين", status:"rejected",       attachments:1,match:"diff",   submittedBy:"سامي الغامدي", date:"19 مارس",refNum:"SL-2395", diff:"فاتورة الكاشير مفقودة",
-    channels:[
-      { name:"كاشير (POS)",    icon:"🖥️", pos:0,     actual:0     },
-      { name:"نقل بنكي (Mada)",icon:"💳", pos:4200,  actual:4200  },
-      { name:"طلبات",          icon:"🔴", pos:1800,  actual:1800  },
-      { name:"هنقرستيشن",      icon:"🟠", pos:2200,  actual:2200  },
-      { name:"جاهز",           icon:"🟡", pos:1100,  actual:1100  },
-      { name:"نينجا",          icon:"⚫", pos:500,   actual:500   },
-    ]},
-  // Expenses
-  { id:"E-1201",branch:"فرع العليا",  brandName:"برغر التاج",       brandColor:"#E53E3E",module:"expenses",moduleLabel:"مصروفات", amount:4850, timeAgo:"قبل 3 ساعات",status:"pending",       attachments:3,match:"review", submittedBy:"فاطمة السالم", date:"21 مارس",refNum:"EX-1201",
-    invoices:[
-      { invNum:"INV-881",vendor:"شركة الخليج للمواد",  desc:"مواد تنظيف وصيانة", amount:1200,date:"21 مارس",verified:false },
-      { invNum:"INV-882",vendor:"مستلزمات المطبخ",     desc:"أدوات خدمة وتغليف", amount:850, date:"21 مارس",verified:false },
-      { invNum:"INV-883",vendor:"خدمات الصيانة السريعة",desc:"إصلاح ثلاجة",       amount:2800,date:"21 مارس",verified:false },
-    ]},
-  { id:"E-1200",branch:"فرع الحمراء", brandName:"برغر التاج",       brandColor:"#E53E3E",module:"expenses",moduleLabel:"مصروفات", amount:2100, timeAgo:"قبل 5 ساعات",status:"pending",       attachments:2,match:"exact",  submittedBy:"خالد العتيبي", date:"21 مارس",refNum:"EX-1200",
-    invoices:[
-      { invNum:"INV-871",vendor:"شركة الوقود",   desc:"وقود توصيل",  amount:900, date:"21 مارس",verified:false },
-      { invNum:"INV-872",vendor:"مكيفات المنطقة",desc:"صيانة مكيف",  amount:1200,date:"21 مارس",verified:false },
-    ]},
-  { id:"E-1199",branch:"فرع الورود",  brandName:"مطعم التاج الراقي",brandColor:"#805AD5",module:"expenses",moduleLabel:"مصروفات", amount:6200, timeAgo:"أمس",         status:"approved",      attachments:4,match:"exact",  submittedBy:"منى الزهراني", date:"20 مارس",refNum:"EX-1199",
-    invoices:[
-      { invNum:"INV-861",vendor:"شركة الديكور",  desc:"ديكور مطعم",  amount:3500,date:"20 مارس",verified:true  },
-      { invNum:"INV-862",vendor:"مكتب الخدمات", desc:"نظافة شهرية", amount:2700,date:"20 مارس",verified:true  },
-    ]},
-  { id:"E-1198",branch:"فرع الملقا",  brandName:"بيتزا التاج",      brandColor:"#2B6CB0",module:"expenses",moduleLabel:"مصروفات", amount:3400, timeAgo:"قبل يومين",status:"rejected",       attachments:2,match:"diff",   submittedBy:"أحمد الحربي",  date:"19 مارس",refNum:"EX-1198", diff:"فاتورة غير مختومة",
-    invoices:[
-      { invNum:"INV-851",vendor:"مستلزمات الطباعة",desc:"مطبوعات قوائم",amount:1400,date:"19 مارس",verified:false },
-      { invNum:"INV-852",vendor:"خدمات النظافة",   desc:"تنظيف أسبوعي", amount:2000,date:"19 مارس",verified:false },
-    ]},
-  // Purchases
-  { id:"P-0801",branch:"فرع الملقا",  brandName:"بيتزا التاج",      brandColor:"#2B6CB0",module:"purchases",moduleLabel:"مشتريات",amount:8200, timeAgo:"قبل 2 ساعة", status:"pending",       attachments:4,match:"diff",   submittedBy:"أحمد الحربي",  date:"21 مارس",refNum:"PO-0801", diff:"فرق كمية 5 كجم جبن",
-    purchaseItems:[
-      { item:"عجينة البيتزا",   unit:"كجم",  ordQty:60, rcvQty:60, unitPrice:28 },
-      { item:"جبنة موزاريلا",   unit:"كجم",  ordQty:30, rcvQty:25, unitPrice:85 },
-      { item:"صوص الطماطم",    unit:"كجم",  ordQty:20, rcvQty:20, unitPrice:32 },
-      { item:"دجاج مشوي",      unit:"كجم",  ordQty:40, rcvQty:40, unitPrice:48 },
-    ]},
-  { id:"P-0800",branch:"فرع الكورنيش",brandName:"بيتزا التاج",      brandColor:"#2B6CB0",module:"purchases",moduleLabel:"مشتريات",amount:5600, timeAgo:"قبل 6 ساعات",status:"pending",       attachments:2,match:"exact",  submittedBy:"عبدالله الدوسري",date:"21 مارس",refNum:"PO-0800",
-    purchaseItems:[
-      { item:"دجاج طازج",      unit:"كجم",  ordQty:80, rcvQty:80, unitPrice:38 },
-      { item:"بطاطس",          unit:"كجم",  ordQty:60, rcvQty:60, unitPrice:18 },
-      { item:"زيت قلي",        unit:"لتر",  ordQty:30, rcvQty:30, unitPrice:22 },
-    ]},
-  { id:"P-0799",branch:"فرع المحطة",  brandName:"مطعم التاج الراقي",brandColor:"#805AD5",module:"purchases",moduleLabel:"مشتريات",amount:3900, timeAgo:"أمس",         status:"approved",      attachments:3,match:"review", submittedBy:"سلطان العمري", date:"20 مارس",refNum:"PO-0799",
-    purchaseItems:[
-      { item:"أرز بسمتي",      unit:"كجم",  ordQty:50, rcvQty:45, unitPrice:32 },
-      { item:"لحم ضأن",        unit:"كجم",  ordQty:30, rcvQty:30, unitPrice:65 },
-      { item:"بهارات مشكلة",   unit:"كجم",  ordQty:10, rcvQty:10, unitPrice:90 },
-    ]},
-  // Inventory
-  { id:"I-0601",branch:"فرع العليا",  brandName:"برغر التاج",       brandColor:"#E53E3E",module:"inventory",moduleLabel:"مخزون",  amount:0,    timeAgo:"قبل ساعة",   status:"pending",       attachments:1,match:"review", submittedBy:"فاطمة السالم", date:"21 مارس",refNum:"INV-0601" },
-  { id:"I-0600",branch:"فرع الملقا",  brandName:"بيتزا التاج",      brandColor:"#2B6CB0",module:"inventory",moduleLabel:"مخزون",  amount:0,    timeAgo:"قبل 3 ساعات",status:"pending",       attachments:1,match:"diff",   submittedBy:"أحمد الحربي",  date:"21 مارس",refNum:"INV-0600", diff:"فرق 12 كجم لحم" },
-  { id:"I-0599",branch:"فرع الورود",  brandName:"مطعم التاج الراقي",brandColor:"#805AD5",module:"inventory",moduleLabel:"مخزون",  amount:0,    timeAgo:"أمس",         status:"approved",      attachments:1,match:"exact",  submittedBy:"منى الزهراني", date:"20 مارس",refNum:"INV-0599" },
-];
 
 // HA-F13: Inventory branch static mocks removed. Live payload or clear unavailable status is rendered.
 const INV_BRANCH_DATA: Record<string,{ name:string; unit:string; prev:number; curr:number; cat:string }[]> = {};
@@ -4547,9 +4435,8 @@ function HeadERP({ ops }:{ ops:COp[] }) {
 //
 // Backed by the live API: GET /api/v1/company/me/operations and the four
 // transition mutations from src/api/queries/operations.ts. While the API
-// query is loading or returns empty (e.g. backend not yet seeded), we fall
-// back to INITIAL_OPS so the UI stays explorable in development. Default
-// rejection reason is generic; a proper rejection-reason modal can be
+// query is loading or returns empty, empty state is displayed (no static mock fallback).
+// Default rejection reason is generic; a proper rejection-reason modal can be
 // added per spec §5.3 (`POST /operations/{id}/reject` body).
 // ═══════════════════════════════════════════════════
 const DEFAULT_REJECT_REASON = "تحتاج مراجعة";
