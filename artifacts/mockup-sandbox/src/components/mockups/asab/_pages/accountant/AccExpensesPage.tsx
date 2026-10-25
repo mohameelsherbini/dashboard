@@ -645,8 +645,8 @@ export function AccExpensesPage({ navigate, setModal, setDetailId, ops, approveO
                           const rInv = inv as typeof inv & { _index?: number; _verified?: boolean; _preTax?: number; _vat?: number; _converted?: boolean };
                           const invIndex = rInv._index ?? k;
                           const isInvVerified = rInv._verified ?? (verifiedInvoices[vKey] || false);
-                          const amtBeforeVat = rInv._preTax ?? Math.round(inv.amount / 1.15);
-                          const vatAmt = rInv._vat ?? (inv.amount - amtBeforeVat);
+                          const amtBeforeVat = rInv._preTax ?? null;
+                          const vatAmt = rInv._vat ?? null;
                           const alreadyConverted = (rInv._converted ?? false) || convertedInvNums.has(inv.invNum);
                           return (
                             <tr key={k} className={`hover:bg-gray-50 ${isInvVerified ? "bg-emerald-50/40" : ""} ${alreadyConverted ? "bg-purple-50/20" : ""}`}>
@@ -654,8 +654,8 @@ export function AccExpensesPage({ navigate, setModal, setDetailId, ops, approveO
                               <td className="px-3 py-2 font-medium text-gray-800">{inv.vendor}</td>
                               <td className="px-3 py-2 text-gray-600">{inv.desc}</td>
                               <td className="px-3 py-2 text-center text-gray-500">{inv.date}</td>
-                              <td className="px-3 py-2 text-center font-mono text-gray-600">{fmtAmt(amtBeforeVat)} {t("ر.س", "SAR")}</td>
-                              <td className="px-3 py-2 text-center font-mono text-amber-600 bg-amber-50/20">{fmtAmt(vatAmt)} {t("ر.س", "SAR")}</td>
+                              <td className="px-3 py-2 text-center font-mono text-gray-600">{amtBeforeVat != null ? `${fmtAmt(amtBeforeVat)} ${t("ر.س", "SAR")}` : "—"}</td>
+                              <td className="px-3 py-2 text-center font-mono text-amber-600 bg-amber-50/20">{vatAmt != null ? `${fmtAmt(vatAmt)} ${t("ر.س", "SAR")}` : "—"}</td>
                               <td className="px-3 py-2 text-center font-mono font-bold text-emerald-700 bg-emerald-50/20">{fmtAmt(inv.amount)} {t("ر.س", "SAR")}</td>
                               <td className="px-3 py-2 text-center">
                                 <button onClick={() => setAttachModal({ opId: op.id, invNum: inv.invNum, idx: 0, files: (inv._attachments && inv._attachments.length ? inv._attachments : opFiles) })}
@@ -692,8 +692,18 @@ export function AccExpensesPage({ navigate, setModal, setDetailId, ops, approveO
                       <tfoot className="bg-gray-50 border-t-2 border-gray-200">
                         <tr>
                           <td colSpan={4} className={`px-3 py-2.5 font-bold text-gray-900 ${dir === "ltr" ? "text-left" : "text-right"}`}>{t("الإجمالي", "Total")}</td>
-                          <td className="px-3 py-2.5 text-center font-mono text-gray-600">{fmtAmt(Math.round(invoices.reduce((s, i) => s + ((i as any)._preTax ?? i.amount / 1.15), 0)))} {t("ر.س", "SAR")}</td>
-                          <td className="px-3 py-2.5 text-center font-mono text-amber-600 bg-amber-50/20">{fmtAmt(Math.round(invoices.reduce((s, i) => s + ((i as any)._vat ?? (i.amount - i.amount / 1.15)), 0)))} {t("ر.س", "SAR")}</td>
+                        {(() => {
+                          const hasPreTax = invoices.length > 0 && invoices.every(i => (i as any)._preTax != null);
+                          const totalPreTax = hasPreTax ? invoices.reduce((s, i) => s + ((i as any)._preTax ?? 0), 0) : null;
+                          const hasVat = invoices.length > 0 && invoices.every(i => (i as any)._vat != null);
+                          const totalVat = hasVat ? invoices.reduce((s, i) => s + ((i as any)._vat ?? 0), 0) : null;
+                          return (
+                            <>
+                              <td className="px-3 py-2.5 text-center font-mono text-gray-600">{totalPreTax != null ? `${fmtAmt(totalPreTax)} ${t("ر.س", "SAR")}` : "—"}</td>
+                              <td className="px-3 py-2.5 text-center font-mono text-amber-600 bg-amber-50/20">{totalVat != null ? `${fmtAmt(totalVat)} ${t("ر.س", "SAR")}` : "—"}</td>
+                            </>
+                          );
+                        })()}
                           <td className="px-3 py-2.5 text-center font-black font-mono text-emerald-700 bg-emerald-50/20">{fmtAmt(invoices.reduce((s, i) => s + i.amount, 0))} {t("ر.س", "SAR")}</td>
                           <td></td>
                           <td className="px-3 py-2.5 text-center text-[10px] text-gray-500">

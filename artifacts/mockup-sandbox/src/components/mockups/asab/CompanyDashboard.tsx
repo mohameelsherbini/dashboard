@@ -352,7 +352,7 @@ function ConvertToAssetModalCD({
   const [errorMsg,   setErrorMsg]   = useState<string|null>(null);
 
   // Draft value is the invoice's PRE-TAX amount (VAT is not capitalised).
-  const amtBeforeVat = preTaxHalalas != null ? Math.round(preTaxHalalas/100) : Math.round(amount/1.15);
+  const amtBeforeVat = preTaxHalalas != null ? (preTaxHalalas / 100) : (amount != null ? (amount / 100) : 0);
   const draftId = `cd-draft-${opId}-${invoiceIndex}`;
   const canConfirm = assetName.trim().length>0 && custodian.trim().length>0 && qty>=1 && Boolean(branchId) && !submitting;
 
