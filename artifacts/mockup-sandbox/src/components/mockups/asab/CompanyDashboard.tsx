@@ -12,6 +12,7 @@ import { getShfAllocationEvidence, prepareShfAllocations, remainingShfAllocation
 import { hasEmployeeDebitWarning } from "./_shared/formatters";
 import { api, generateCommandId } from "../../../api/client";
 import { toast } from "sonner";
+import { ErrorBoundary } from "../../ErrorBoundary";
 import { useState, useMemo, useEffect, useLayoutEffect, useRef, ReactNode, createContext, useContext, type MouseEvent as ReactMouseEvent } from "react";
 import {
   useOperations, useApproveOperation, useRejectOperation, useBulkApprove, useFinalApprove, useBulkFinalApprove,
@@ -2164,8 +2165,8 @@ function CASubscription() {
   const { t, dir, lang } = useCLang();
   const upgradeMut = useUpgradeSubscription();
   const contactMut = useContactSales();
-  const { data: apiSub } = useCompanySubscription();
-  const { data: apiPlans = [] } = useCompanyPlans();
+  const { data: apiSub, isLoading: isSubLoading, isError: isSubError, error: subError, refetch: refetchSub } = useCompanySubscription();
+  const { data: apiPlans = [], isLoading: isPlansLoading, isError: isPlansError, error: plansError, refetch: refetchPlans } = useCompanyPlans();
   const [billing,setBilling]=useState<"annual"|"monthly">("annual");
   const plansList = Array.isArray(apiPlans) ? apiPlans : [];
   // Driven by GET /plans. No static fallback.
@@ -2202,6 +2203,36 @@ function CASubscription() {
   const currentPlanPriceMonthly = currentPriceMonthlyObj.formatted;
   const SAR = t("ر.س","SAR");
   const perYear = t("سنة","year"); const perMonth = t("شهر","mo");
+
+  if (isPlansLoading || isSubLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center" role="status" dir={dir}>
+        <RefreshCw size={28} className="animate-spin text-purple-600 mb-3" />
+        <p className="text-sm font-semibold text-gray-700">{t("جارٍ تحميل بيانات الاشتراك والخطة…", "Loading subscription & plans…")}</p>
+      </div>
+    );
+  }
+
+  if (isPlansError) {
+    return (
+      <div role="alert" className="p-6 my-4 bg-rose-50/70 border border-rose-200 rounded-2xl shadow-sm text-right" dir={dir}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center text-rose-600 shrink-0">
+            <AlertTriangle size={20} />
+          </div>
+          <div>
+            <h3 className="font-bold text-rose-900 text-base">{t("فشل تحميل بيانات الخطط", "Failed to load plans")}</h3>
+            <p className="text-xs text-rose-600 mt-0.5">{t("حدث خطأ أثناء الاتصال بالخادم. لم يتم عرض أي بيانات مالية افتراضية.", "An error occurred fetching plans. No default financial figures are shown.")}</p>
+          </div>
+        </div>
+        <p className="bg-white/80 border border-rose-100 rounded-xl p-3 mb-4 text-xs font-mono text-rose-800 break-words" dir="ltr">{getErrorMessage(plansError, lang)}</p>
+        <button onClick={() => { refetchPlans(); refetchSub(); }} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm">
+          <RefreshCw size={13} />
+          <span>{t("إعادة المحاولة", "Retry")}</span>
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="space-y-5" dir={dir}>
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -2267,8 +2298,8 @@ function CASubscription() {
 function CAUsers() {
   const { t, dir, lang } = useCLang();
   type U = { id:string;name:string;role:string;branch:string;email:string;status:"active"|"inactive";last:string };
-  const { data: apiUsers = [] } = useCompanyUsers();
-  const { data: apiInvites = [] } = useCompanyInvitations();
+  const { data: apiUsers = [], isLoading: isUsersLoading, isError: isUsersError, error: usersError, refetch: refetchUsers } = useCompanyUsers();
+  const { data: apiInvites = [], isLoading: isInvitesLoading, isError: isInvitesError, error: invitesError, refetch: refetchInvites } = useCompanyInvitations();
   const toggleMut = useToggleCompanyUserStatus();
   const inviteMut = useCreateCompanyInvitation();
   const updateUserMut = useUpdateCompanyUser();
@@ -2294,6 +2325,36 @@ function CAUsers() {
   const { data: branchLookup = [] } = useLookup("branches");
   const brandOptions = Array.isArray(brandLookup) ? brandLookup : [];
   const branchOptions = Array.isArray(branchLookup) ? branchLookup : [];
+
+  if (isUsersLoading || isInvitesLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center" role="status" dir={dir}>
+        <RefreshCw size={28} className="animate-spin text-purple-600 mb-3" />
+        <p className="text-sm font-semibold text-gray-700">{t("جارٍ تحميل المستخدمين والدعوات…", "Loading users and invitations…")}</p>
+      </div>
+    );
+  }
+
+  if (isUsersError) {
+    return (
+      <div role="alert" className="p-6 my-4 bg-rose-50/70 border border-rose-200 rounded-2xl shadow-sm text-right" dir={dir}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center text-rose-600 shrink-0">
+            <AlertTriangle size={20} />
+          </div>
+          <div>
+            <h3 className="font-bold text-rose-900 text-base">{t("فشل تحميل قائمة المستخدمين", "Failed to load users list")}</h3>
+            <p className="text-xs text-rose-600 mt-0.5">{t("حدث خطأ أثناء جلب المستخدمين من الخادم.", "An error occurred fetching users from server.")}</p>
+          </div>
+        </div>
+        <p className="bg-white/80 border border-rose-100 rounded-xl p-3 mb-4 text-xs font-mono text-rose-800 break-words" dir="ltr">{getErrorMessage(usersError, lang)}</p>
+        <button onClick={() => { refetchUsers(); refetchInvites(); }} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm">
+          <RefreshCw size={13} />
+          <span>{t("إعادة المحاولة", "Retry")}</span>
+        </button>
+      </div>
+    );
+  }
   const [showAdd,setShowAdd]=useState(false);
   const [search,setSearch]=useState("");
   const [inviteForm,setInviteForm]=useState<{
@@ -2541,7 +2602,7 @@ function CAUsers() {
 
 function CABranches() {
   const { t, dir, lang } = useCLang();
-  const { data: apiBrandsTree = [] } = useCompanyBrands();
+  const { data: apiBrandsTree = [], isLoading: isBrandsLoading, isError: isBrandsError, error: brandsError, refetch: refetchBrands } = useCompanyBrands();
   const { data: members = [] } = useCompanyUsers();
   const createBranchMut = useCreateBranch();
   const transferMut = useTransferBranchManager();
@@ -2562,6 +2623,36 @@ function CABranches() {
       })),
     })),
   }));
+
+  if (isBrandsLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center" role="status" dir={dir}>
+        <RefreshCw size={28} className="animate-spin text-purple-600 mb-3" />
+        <p className="text-sm font-semibold text-gray-700">{t("جارٍ تحميل العلامات والفروع…", "Loading brands and branches…")}</p>
+      </div>
+    );
+  }
+
+  if (isBrandsError) {
+    return (
+      <div role="alert" className="p-6 my-4 bg-rose-50/70 border border-rose-200 rounded-2xl shadow-sm text-right" dir={dir}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center text-rose-600 shrink-0">
+            <AlertTriangle size={20} />
+          </div>
+          <div>
+            <h3 className="font-bold text-rose-900 text-base">{t("فشل تحميل الفروع والعلامات", "Failed to load brands and branches")}</h3>
+            <p className="text-xs text-rose-600 mt-0.5">{t("حدث خطأ أثناء جلب الفروع من الخادم.", "An error occurred fetching branches from server.")}</p>
+          </div>
+        </div>
+        <p className="bg-white/80 border border-rose-100 rounded-xl p-3 mb-4 text-xs font-mono text-rose-800 break-words" dir="ltr">{getErrorMessage(brandsError, lang)}</p>
+        <button onClick={() => refetchBrands()} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm">
+          <RefreshCw size={13} />
+          <span>{t("إعادة المحاولة", "Retry")}</span>
+        </button>
+      </div>
+    );
+  }
   const allBranchesTree: BTBranch[] = brandsTree.flatMap(b=>b.restaurants.flatMap(r=>r.branches));
   const activeBranchesCount = allBranchesTree.filter(b=>b.reviewStatus!=="pending_review"&&b.reviewStatus!=="rejected").length;
   const pendingCount = allBranchesTree.filter(b=>b.reviewStatus==="pending_review").length;
@@ -8556,9 +8647,11 @@ function CompanyDashboardInner() {
   const dashboard = (
     <Shell role={currentRole} page={currentPage} navigate={navigate} onLogout={logout} headPendingCount={headPendingCount}
       allowedRoles={allowedRoles} onSelectRole={selectRole}>
-      <PageRouter role={currentRole} page={currentPage} navigate={navigate}
-        ops={ops} approve={approve} reject={reject} requestClarification={requestClarification}
-        bulkApprove={bulkApprove} finalApprove={finalApprove} bulkFinalApprove={bulkFinalApprove} actionsPending={actionsPending} shiftReviewPage={shiftReviewPage} setShiftReviewPage={setShiftReviewPage}/>
+      <ErrorBoundary title={t("تعذر تحميل الصفحة المطلوبة", "Unable to load the requested page")}>
+        <PageRouter role={currentRole} page={currentPage} navigate={navigate}
+          ops={ops} approve={approve} reject={reject} requestClarification={requestClarification}
+          bulkApprove={bulkApprove} finalApprove={finalApprove} bulkFinalApprove={bulkFinalApprove} actionsPending={actionsPending} shiftReviewPage={shiftReviewPage} setShiftReviewPage={setShiftReviewPage}/>
+      </ErrorBoundary>
       {(currentRole==="accountant" || currentRole==="head") && <RejectModal {...rejectModalProps} t={t}/>}
       {(currentRole==="accountant" || currentRole==="head") && <ClarifyModal {...clarifyModalProps} t={t}/>}
       {/* Floating live-support chat — available to every company role. */}
