@@ -9,6 +9,7 @@ import {
   isRiyadhDate,
   sanitizeError,
   computeSmokeSummary,
+  determineSmokeExitCode,
   type RoleSmokeResult,
 } from "../../../../../scripts/smoke-test-staging";
 
@@ -571,6 +572,58 @@ test("T033: Result Categories Breakdown & Failure Determination", () => {
   assert.ok(notRunSummary.notRunCount >= 1);
   assert.notEqual(notRunSummary.overallStatus, "PASS");
   assert.equal(notRunSummary.overallStatus, "NOT_RUN");
+
+  // Case 9: When Branch Scope evaluation from /auth/me fails or is inconclusive (guardPassed: false), it must register as BLOCKED
+  const branchNoEvalResults: RoleSmokeResult[] = [
+    {
+      role: "branch",
+      testId: "SMOKE_BRANCH_01",
+      loginStatus: "PASS",
+      logoutStatus: "SUCCESS",
+      endpoints: [
+        { endpoint: "/company/me/branch/overview", method: "GET", description: "Branch Overview", hookReference: "usePlatformBranchOverview", status: 200, statusText: "OK", durationMs: 30, rootCauseClassification: "OK" },
+      ],
+    },
+  ];
+  const branchNoEvalSummary = computeSmokeSummary(branchNoEvalResults, "RUNNABLE", {
+    guardPassed: false,
+    verdict: "NOT_EVALUATED / BLOCKED: Failed to inspect branch manager scope from /auth/me",
+  });
+  assert.ok(branchNoEvalSummary.blockedCount >= 1, "Inconclusive branchScopeEvaluation must increment blockedCount");
+  assert.equal(branchNoEvalSummary.overallStatus, "BLOCKED", "Inconclusive branchScopeEvaluation must yield overallStatus BLOCKED");
+
+  // Case 10: When required Roleless account is missing, runner records roleless as BLOCKED, yielding overallStatus BLOCKED
+  const missingRolelessResults: RoleSmokeResult[] = [
+    {
+      role: "roleless_authenticated",
+      testId: "SMOKE_ROLELESS_01",
+      loginStatus: "BLOCKED",
+      logoutStatus: "NOT_RUN",
+      endpoints: [
+        {
+          endpoint: "/company/me/shifts",
+          method: "GET",
+          description: "Verify authenticated roleless user receives 403",
+          hookReference: "useRoleGuard",
+          status: 0,
+          statusText: "NOT_CONFIGURED",
+          durationMs: 0,
+          rootCauseClassification: "BLOCKED",
+          error: "BLOCKED: ASSAB_ROLELESS_EMAIL environment variable is not configured.",
+        },
+      ],
+    },
+  ];
+  const missingRolelessSummary = computeSmokeSummary(missingRolelessResults, "RUNNABLE");
+  assert.ok(missingRolelessSummary.blockedCount >= 1, "Missing roleless account must increment blockedCount");
+  assert.equal(missingRolelessSummary.overallStatus, "BLOCKED", "Missing roleless account must yield overallStatus BLOCKED");
+
+  // Case 11: determineSmokeExitCode must return non-zero exit code when overallStatus is BLOCKED or FAIL
+  assert.equal(determineSmokeExitCode("RUNNABLE", "PASS"), 0, "All checks passed must yield exit code 0");
+  assert.equal(determineSmokeExitCode("RUNNABLE", "FAIL"), 1, "Failed checks must yield exit code 1");
+  assert.equal(determineSmokeExitCode("BLOCKED — NO REQUESTS EXECUTED", "BLOCKED"), 2, "Readiness gate blocked must yield exit code 2");
+  assert.equal(determineSmokeExitCode("RUNNABLE", "BLOCKED"), 3, "Operational acceptance BLOCKED must yield non-zero exit code 3");
+  assert.equal(determineSmokeExitCode("RUNNABLE", "NOT_RUN"), 3, "Operational acceptance NOT_RUN must yield non-zero exit code 3");
 });
 
 test("T034: Smoke Workflow Exit Code Propagation & Failure Safety", () => {
@@ -598,5 +651,23 @@ test("T034: Smoke Workflow Exit Code Propagation & Failure Safety", () => {
   assert.ok(
     workflowContent.includes("if: always()"),
     "Evidence upload must execute on failure using if: always()",
+  );
+
+  // 4. Pinned reviewed repository and commit SHA inputs are configured for cross-repo execution
+  assert.ok(
+    workflowContent.includes("reviewed_dashboard_commit_sha:"),
+    "Workflow must define reviewed_dashboard_commit_sha input",
+  );
+  assert.ok(
+    workflowContent.includes("reviewed_dashboard_repository:"),
+    "Workflow must define reviewed_dashboard_repository input",
+  );
+  assert.ok(
+    workflowContent.includes("repository: ${{ inputs.reviewed_dashboard_repository"),
+    "Workflow checkout must target inputs.reviewed_dashboard_repository",
+  );
+  assert.ok(
+    workflowContent.includes("ref: ${{ inputs.reviewed_dashboard_commit_sha"),
+    "Workflow checkout must pin ref to inputs.reviewed_dashboard_commit_sha",
   );
 });

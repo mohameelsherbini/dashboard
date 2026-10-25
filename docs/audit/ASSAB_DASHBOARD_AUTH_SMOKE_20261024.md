@@ -133,21 +133,33 @@ Operational acceptance is BLOCKED. Dashboard executed checks ALL_PASSED (16/16).
 
 ## 6. GitHub Actions Dispatch Readiness & Operator Instructions
 
-The workflow `.github/workflows/assab-go17-staging-smoke.yml` has been updated to remediate false success:
-- **No `|| true`**: Unconditional failure masking is removed.
+The workflow `.github/workflows/assab-go17-staging-smoke.yml` has been updated to remediate false success and support secure isolated cross-repo dispatch:
+- **No `|| true`**: Unconditional failure masking is completely removed.
 - **`shell: bash` + `set -o pipefail`**: Failure in `node ...` propagates through `tee` to the step exit code.
-- **Fail-Closed Runner**: Script terminates with `process.exit(1)` upon any check failure or financial mismatch, and `process.exit(2)` if the staging readiness gate is blocked.
-- **`if: always()` on Evidence Upload**: Evidence artifact `assab-smoke-evidence-${{ github.run_id }}` is always uploaded even when checks fail.
+- **Fail-Closed Non-Zero Exit Codes (`determineSmokeExitCode`)**:
+  - `0`: All acceptance checks PASSED (full operational acceptance).
+  - `1`: Acceptance verification FAILED with errors or financial mismatches.
+  - `2`: Staging readiness gate BLOCKED before execution (missing prerequisites/credentials).
+  - `3`: Operational acceptance BLOCKED or NOT_RUN (standing backend dependencies E1/E2/E3, missing roleless account, or inconclusive branch scope).
+  - Exit code 3 ensures that CI does NOT report false final acceptance when dependencies are blocked.
+- **`if: always()` on Evidence Upload**: Evidence artifact `assab-smoke-evidence-${{ github.run_id }}` is always uploaded even when checks are BLOCKED or FAIL.
 - **GitHub Step Summary**: Automatically produces formatted markdown tables in GitHub Actions UI.
+- **Strict Fallbacks on Missing Roleless / Branch Scope**: If `ASSAB_ROLELESS_EMAIL` is not set, or `/auth/me` fails to evaluate branch scope, the runner does NOT skip them; it records `BLOCKED` and prevents false `PASS`.
 
 ### Operator Dispatch Instructions for Mahmoud
-To execute this workflow safely in `mahmoudmagdy200000-code/dashboard`:
-1. Do **NOT** merge the entire feature branch into main just to enable the workflow.
-2. Ensure the GitHub Environment `assab-staging-smoke` contains secrets:
-   - `ASSAB_STAGING_PASSWORD`
-   - `ASSAB_ROLELESS_EMAIL` (optional)
-3. Ensure the workflow checks out the pinned commit SHA (`ref: ${{ github.sha }}`) with `permissions: contents: read`.
-4. Trigger workflow via GitHub Actions `workflow_dispatch` with attested input:
+To execute this workflow safely in `mahmoudmagdy200000-code/dashboard` without merging application code:
+1. **Enable Workflow UI on `main`**:
+   Mahmoud only commits the single workflow YAML file `.github/workflows/assab-go17-staging-smoke.yml` to the default branch (`main`) of `mahmoudmagdy200000-code/dashboard`.
+   *Zero application code, feature changes, or unverified files are merged into `main`.*
+2. **Configure Secrets**:
+   Ensure the GitHub Environment `assab-staging-smoke` in `mahmoudmagdy200000-code/dashboard` contains secrets:
+   - `ASSAB_STAGING_PASSWORD` (Staging fixture password)
+   - `ASSAB_ROLELESS_EMAIL` (Roleless test user email; if omitted, test safely records `BLOCKED`)
+3. **Trigger Workflow via `workflow_dispatch`**:
+   In GitHub Actions UI under "ASSAB ERP — Staging Read-Only Smoke & Compatibility", click "Run workflow" with inputs:
+   - `reviewed_dashboard_repository`: `mohameelsherbini/dashboard`
+   - `reviewed_dashboard_commit_sha`: (Sherbini's exact attested commit SHA)
    - `attested_deployed_backend_sha`: `26f86c683a17a8c5ebe19771186d6b35230d62cf`
-   - `attested_frontend_staging_url`: (optional Vercel URL)
-5. Review the uploaded `smoke-output.log` and GitHub Step Summary table.
+   - `attested_frontend_staging_url`: (optional Vercel Staging URL)
+4. **Execution & Evidence**:
+   The workflow checks out Sherbini's exact audited code with `permissions: contents: read`. If operational acceptance is held on Backend E1/E2/E3, the step exits with code 3, and `if: always()` uploads the complete sanitized artifact `assab-smoke-evidence-<run_id>`.

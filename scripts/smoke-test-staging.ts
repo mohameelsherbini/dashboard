@@ -459,7 +459,7 @@ export function computeSmokeSummary(
     }
   }
 
-  // Branch Scope evaluation: if branch role access guard failed due to polluted backend fixture,
+  // Branch Scope evaluation: if branch role access guard failed or could not be evaluated,
   // classify as Backend E2/E3 blocker (do not ignore guardPassed result)
   if (branchScopeEvaluation && branchScopeEvaluation.guardPassed === false) {
     blockedCount++;
@@ -498,6 +498,30 @@ export function computeSmokeSummary(
     executedChecksStatus,
     overallStatus,
   };
+}
+
+/**
+ * Determines the exit code for CI / workflow gating based on environment and operational acceptance:
+ * - 0: All acceptance checks PASSED (full operational acceptance)
+ * - 1: Acceptance verification FAILED with errors or financial mismatches
+ * - 2: Staging readiness gate BLOCKED before execution (missing prerequisites/credentials)
+ * - 3: Operational acceptance gate BLOCKED or NOT_RUN (standing backend dependencies, missing required accounts, or unexecuted checks)
+ * Non-zero exit code ensures CI workflow gates do not report false success.
+ */
+export function determineSmokeExitCode(
+  environmentState: string,
+  overallStatus: "PASS" | "FAIL" | "BLOCKED" | "NOT_RUN"
+): number {
+  if (environmentState.startsWith("BLOCKED")) {
+    return 2;
+  }
+  if (overallStatus === "FAIL") {
+    return 1;
+  }
+  if (overallStatus === "BLOCKED" || overallStatus === "NOT_RUN") {
+    return 3;
+  }
+  return 0;
 }
 
 export async function runStagingSmoke(): Promise<{
@@ -984,6 +1008,18 @@ export async function runStagingSmoke(): Promise<{
   }
   results.push(branchResult);
 
+  // If Branch Scope could not be inspected from /auth/me (e.g. login failed, 403/500, or empty roles),
+  // record as NOT_EVALUATED / BLOCKED rather than skipping it.
+  if (!branchScopeEvaluation) {
+    branchScopeEvaluation = {
+      roleKey: undefined,
+      scope: undefined,
+      guardPassed: false,
+      verdict: "NOT_EVALUATED / BLOCKED: Failed to inspect branch manager scope from /auth/me",
+    };
+    blockers.push("Branch Scope evaluation from /auth/me could not be completed.");
+  }
+
   // 5. AUTHENTICATED ROLE-LESS USER (403 WRONG_ROLE check with error envelope inspection)
   if (ROLELESS_EMAIL) {
     const rolelessResult: RoleSmokeResult = {
@@ -1059,6 +1095,29 @@ export async function runStagingSmoke(): Promise<{
         }
       }
     }
+    results.push(rolelessResult);
+  } else {
+    // Missing required role-less account: do NOT skip! Register BLOCKED / NOT_RUN
+    blockers.push("ASSAB_ROLELESS_EMAIL environment variable is not configured. Required role-less user WRONG_ROLE 403 inspection cannot execute.");
+    const rolelessResult: RoleSmokeResult = {
+      role: "roleless_authenticated",
+      testId: "SMOKE_ROLELESS_01",
+      loginStatus: "BLOCKED",
+      logoutStatus: "NOT_RUN",
+      endpoints: [
+        {
+          endpoint: "/company/me/shifts",
+          method: "GET",
+          description: "Verify authenticated roleless user receives 403 with error.code WRONG_ROLE and error.messageAr",
+          hookReference: "useRoleGuard",
+          status: 0,
+          statusText: "NOT_CONFIGURED",
+          durationMs: 0,
+          rootCauseClassification: "BLOCKED",
+          error: "BLOCKED: ASSAB_ROLELESS_EMAIL environment variable is not configured. Required role-less test account is missing.",
+        },
+      ],
+    };
     results.push(rolelessResult);
   }
 
@@ -1145,15 +1204,16 @@ if (process.argv[1] && (process.argv[1].endsWith("smoke-test-staging.ts") || pro
       }
 
       // Exit code propagation
-      if (report.environmentState.startsWith("BLOCKED")) {
-        console.error("[smoke-test] Readiness gate blocked before execution.");
-        process.exit(2);
-      } else if (report.summary.overallStatus === "FAIL") {
-        console.error("[smoke-test] Acceptance verification failed with errors or mismatches.");
-        process.exit(1);
-      } else if (report.summary.overallStatus === "BLOCKED") {
-        console.warn(`[smoke-test] Operational acceptance BLOCKED by standing backend dependencies (E1/E2/E3). Executed checks: ${report.summary.executedChecksStatus}`);
-        process.exit(0);
+      const exitCode = determineSmokeExitCode(report.environmentState, report.summary.overallStatus);
+      if (exitCode !== 0) {
+        if (exitCode === 2) {
+          console.error("[smoke-test] Readiness gate blocked before execution.");
+        } else if (exitCode === 1) {
+          console.error("[smoke-test] Acceptance verification failed with errors or mismatches.");
+        } else {
+          console.warn(`[smoke-test] Operational acceptance gate BLOCKED / NOT_RUN (Exit code ${exitCode}). Executed checks: ${report.summary.executedChecksStatus}. Overall status: ${report.summary.overallStatus}.`);
+        }
+        process.exit(exitCode);
       } else {
         console.log("[smoke-test] All acceptance checks PASSED.");
         process.exit(0);
