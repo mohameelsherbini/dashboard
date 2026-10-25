@@ -1180,7 +1180,7 @@ function Shell({ role, page, navigate, onLogout, children, headPendingCount=0, a
 // ═══════════════════════════════════════════════════
 // T03/T04 NET-NEW SHARED UI (colocated)
 // ═══════════════════════════════════════════════════
-const fmtH = (h:number|null|undefined) => h == null ? "—" : fmt(Math.round(h)/100); // halalas → SAR display
+const fmtH = (h:number|null|undefined) => h == null ? "—" : fmtSar2(h/100); // halalas → SAR display (DB-1: preserves exact fractions)
 
 // Branch/day state chips — GET /pipeline/daily-rollup (T03 §12).
 // The 7th chip (erp_imported) is a reserved future stage → always greyed out.
@@ -1340,7 +1340,7 @@ function SalesReconPanel({ op, onApprove, onReject, onClarify, isPending, forHea
     if (!recon) return;
     runSalesAction(salesContext, "edit", () => {
       const seed:Record<string,string> = {};
-      channels.forEach(c=>{ seed[c.key] = String(Math.round(c.actualAmountHalalas)/100); });
+      channels.forEach(c=>{ seed[c.key] = String(c.actualAmountHalalas / 100); });
       setDraft(seed);
       setVarReason(recon?.varianceReason ?? "");
       setEditMode(true);
@@ -2081,10 +2081,10 @@ function CADashboard({ navigate }:{ navigate:(p:string)=>void }) {
   const apiTotals = (apiDashboard?.totals ?? {}) as Record<string, number>;
   const apiBrands = Array.isArray(apiDashboard?.brands) ? apiDashboard!.brands! : [];
   const totalSalesM = (apiKpis.totalSalesHalalas as number | undefined) != null
-    ? Math.round(((apiKpis.totalSalesHalalas as number) / 100))
+    ? ((apiKpis.totalSalesHalalas as number) / 100)
     : 0;
   const totalExpM   = (apiKpis.totalExpensesHalalas as number | undefined) != null
-    ? Math.round(((apiKpis.totalExpensesHalalas as number) / 100))
+    ? ((apiKpis.totalExpensesHalalas as number) / 100)
     : 0;
   const brandsCount      = apiTotals.brandsCount      ?? apiBrands.length;
   const restaurantsCount = apiTotals.restaurantsCount ?? apiBrands.reduce((s,b)=>s+(b.restaurantsCount ?? 0),0);
@@ -2093,7 +2093,7 @@ function CADashboard({ navigate }:{ navigate:(p:string)=>void }) {
   const usage = (apiSub?.usage ?? {}) as Record<string, { used: number; max: number | null }>;
   const branchesMax = usage.branches?.max ?? 0;
   const usersMax    = usage.users?.max    ?? 0;
-  const planPrice   = Math.round((((apiSub as any)?.priceHalalas as number) ?? 0) / 100);
+  const planPrice   = (((apiSub as any)?.priceHalalas as number) ?? 0) / 100;
   const daysRemaining = apiSub?.daysRemaining ?? 0;
   const branchCompletionRate = (apiKpis.branchCompletionRate as number | undefined) ?? 0;
   const branchesAboveTarget  = (apiKpis.branchesAboveTarget  as number | undefined) ?? 0;
@@ -2181,8 +2181,8 @@ function CADashboard({ navigate }:{ navigate:(p:string)=>void }) {
           <div className="col-span-1 md:col-span-3 bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center text-gray-400 text-sm">{t("لا توجد بيانات علامات تجارية بعد","No brand data yet")}</div>
         )}
         {apiBrands.map(b=>{
-          const sales=Math.round((b.monthlySalesHalalas ?? 0)/100);
-          const target=Math.round((b.monthlyTargetHalalas ?? 0)/100);
+          const sales=(b.monthlySalesHalalas ?? 0)/100;
+          const target=(b.monthlyTargetHalalas ?? 0)/100;
           const pct=target>0?Math.round((sales/target)*100):0;
           const color=b.color ?? "#7C3AED";
           return (
@@ -2221,8 +2221,8 @@ function CASubscription() {
     return {
       id: p.id,
       plan: planName,
-      price_m: p.priceMonthlyHalalas != null ? Math.round(p.priceMonthlyHalalas / 100) : null,
-      price_a: p.priceAnnualHalalas  != null ? Math.round(p.priceAnnualHalalas  / 100) : null,
+      price_m: p.priceMonthlyHalalas != null ? p.priceMonthlyHalalas / 100 : null,
+      price_a: p.priceAnnualHalalas  != null ? p.priceAnnualHalalas  / 100 : null,
       features: normalizedFeatures,
       current: hasActiveSub ? (p.isCurrent ?? false) : false,
     };
@@ -2729,8 +2729,8 @@ function CABranches() {
       id: r.id, name: r.name,
       branches: (Array.isArray(r.branches) ? r.branches : []).map((br:any):BTBranch=>({
         id: br.id, name: br.name, city: br.city ?? "", mgr: br.managerName ?? "—", mgrUserId: br.managerUserId,
-        salesM: Math.round((br.monthlySalesHalalas ?? 0)/100),
-        target: Math.round((br.monthlyTargetHalalas ?? 0)/100),
+        salesM: (br.monthlySalesHalalas ?? 0) / 100,
+        target: (br.monthlyTargetHalalas ?? 0) / 100,
         reviewStatus: br.reviewStatus, // T14.1 — pending_review | approved | rejected
       })),
     })),
@@ -3896,8 +3896,8 @@ function HeadDashboard({ navigate, ops, finalApprove, reject, bulkFinalApprove, 
   const headBrands = (Array.isArray(rawBrands) ? rawBrands : []).map((b: any) => {
     const rawSales = (b.salesHalalas ?? b.monthlySalesHalalas ?? b.sales ?? 0) as number;
     const rawTarget = (b.target ?? 0) as number;
-    const sales = Math.round(rawSales / 100);
-    const target = rawTarget > 0 ? Math.round(rawTarget / 100) : 0;
+    const sales = rawSales / 100;
+    const target = rawTarget > 0 ? rawTarget / 100 : 0;
     const pct = b.pctOfTarget != null && b.pctOfTarget > 0 ? Math.round(b.pctOfTarget) : target > 0 ? Math.round((sales / target) * 100) : 0;
     return {
       id: b.brandId ?? b.id ?? b.name,

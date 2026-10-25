@@ -242,7 +242,7 @@ export function calculateBillingKpis(
 
   // Prioritize company-wide totals from GET /company/me/billing/summary over single-page sum
   const totalPaid = summary?.totalPaidHalalas != null
-    ? Math.round(summary.totalPaidHalalas / 100)
+    ? summary.totalPaidHalalas / 100
     : paid.reduce((sum, i) => sum + i.amount, 0);
 
   const isSummaryBasedPaid = summary?.totalPaidHalalas != null;
@@ -255,7 +255,7 @@ export function calculateBillingKpis(
 
   // If backend ever provides company-wide outstandingHalalas in summary, use it:
   const companyTotalDue = summary?.outstandingHalalas != null
-    ? Math.round(summary.outstandingHalalas / 100)
+    ? summary.outstandingHalalas / 100
     : null;
 
   const hasPaginationTotal = totalCountMeta != null;
@@ -340,9 +340,12 @@ export function formatPlanPrice(
       isCustom: true,
     };
   }
-  const sar = Math.round(priceHalalas / 100);
+  const sar = priceHalalas / 100;
   return {
-    formatted: sar.toLocaleString("en-US"),
+    formatted: sar.toLocaleString("en-US", {
+      minimumFractionDigits: sar % 1 === 0 ? 0 : 2,
+      maximumFractionDigits: 2,
+    }),
     isCustom: false,
   };
 }
