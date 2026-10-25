@@ -36,7 +36,7 @@ import {
   useReports, useDownloadReport,
   // Company Admin
   useCompanyAdminDashboard, useCompanyUsers, useToggleCompanyUserStatus, useCreateCompanyInvitation,
-  useCompanyBrands, useCreateBranch, useCompanyModules, useToggleCompanyModule,
+  useCompanyBrands, useCreateBrand, useCreateRestaurant, useCreateBranch, useCompanyModules, useToggleCompanyModule,
   useCompanySettings, useUpdateCompanySettings, useUpgradeSubscription, useContactSales,
   useCompanySubscription, useCompanyPlans,
   // Billing
@@ -89,7 +89,7 @@ import { getErrorMessage, isApiError } from "../../../api/errors";
 import { isUnassignedAsset, buildAssignPatch, branchPatchPart } from "./assetAssignment";
 import { initialCompanySettingsState, runCompanySettingsSave, type CompanySettingsFormState } from "./companySettingsGuards";
 import { SUPPORT_TICKET_CATEGORIES, runSupportTicketSubmit } from "./supportTicketGuards";
-import { validateBranchCreate, validateUserEdit, parseInvoice, calculateBillingKpis, parseSupportChannel, formatPlanPrice, formatQuota, canToggleModule, DESKTOP_BREAKPOINT_PX, trapDrawerFocus } from "./companyAdminGuards";
+import { validateBrandCreate, validateRestaurantCreate, validateBranchCreate, validateUserEdit, parseInvoice, calculateBillingKpis, parseSupportChannel, formatPlanPrice, formatQuota, canToggleModule, DESKTOP_BREAKPOINT_PX, trapDrawerFocus } from "./companyAdminGuards";
 import { NotificationBell } from "../../shared/NotificationBell";
 import { RejectModal } from "../../shared/RejectModal";
 import { ClarifyModal } from "../../shared/ClarifyModal";
@@ -2700,8 +2700,24 @@ function CABranches() {
   const { t, dir, lang } = useCLang();
   const { data: apiBrandsTree = [], isLoading: isBrandsLoading, isError: isBrandsError, error: brandsError, refetch: refetchBrands } = useCompanyBrands();
   const { data: members = [] } = useCompanyUsers();
+  const createBrandMut = useCreateBrand();
+  const createRestaurantMut = useCreateRestaurant();
   const createBranchMut = useCreateBranch();
   const transferMut = useTransferBranchManager();
+
+  // State for Add Brand modal
+  const [showAddBrand, setShowAddBrand] = useState(false);
+  const [newBrandName, setNewBrandName] = useState("");
+  const [newBrandAbbr, setNewBrandAbbr] = useState("");
+  const [newBrandColor, setNewBrandColor] = useState("#7C3AED");
+  const [brandFormError, setBrandFormError] = useState<string | null>(null);
+
+  // State for Add Restaurant modal
+  const [showAddRestaurant, setShowAddRestaurant] = useState(false);
+  const [newRestBrandId, setNewRestBrandId] = useState("");
+  const [newRestName, setNewRestName] = useState("");
+  const [restFormError, setRestFormError] = useState<string | null>(null);
+
   // Brand → restaurant → branch tree driven entirely by GET /company/me/brands.
   type BTBranch = { id:string; name:string; city:string; mgr:string; mgrUserId?:string; salesM:number; target:number; reviewStatus?:string };
   type BTRest = { id:string; name:string; branches:BTBranch[] };
@@ -2750,6 +2766,7 @@ function CABranches() {
     );
   }
   const allBranchesTree: BTBranch[] = brandsTree.flatMap(b=>b.restaurants.flatMap(r=>r.branches));
+  const allRestaurantsCount = brandsTree.reduce((sum, b) => sum + b.restaurants.length, 0);
   const activeBranchesCount = allBranchesTree.filter(b=>b.reviewStatus!=="pending_review"&&b.reviewStatus!=="rejected").length;
   const pendingCount = allBranchesTree.filter(b=>b.reviewStatus==="pending_review").length;
   const [expandedBrand,setExpandedBrand]=useState<string>("");
@@ -2779,6 +2796,45 @@ function CABranches() {
     ? <Badge className="bg-red-50 text-red-700 text-[9px]">{t("مرفوض","Rejected")}</Badge>
     : null;
 
+  const submitNewBrand = () => {
+    const val = validateBrandCreate({ name: newBrandName, abbr: newBrandAbbr, color: newBrandColor }, lang);
+    if (!val.valid || !val.payload) {
+      setBrandFormError(val.error || t("بيانات غير مكتملة", "Incomplete data"));
+      return;
+    }
+    createBrandMut.mutate(val.payload, {
+      onSuccess: () => {
+        setShowAddBrand(false);
+        setNewBrandName("");
+        setNewBrandAbbr("");
+        setNewBrandColor("#7C3AED");
+        setBrandFormError(null);
+      },
+      onError: (err) => {
+        setBrandFormError(getErrorMessage(err, lang) || t("فشل إضافة العلامة التجارية", "Failed to add brand"));
+      },
+    });
+  };
+
+  const submitNewRestaurant = () => {
+    const val = validateRestaurantCreate({ brandId: newRestBrandId, name: newRestName }, lang);
+    if (!val.valid || !val.payload) {
+      setRestFormError(val.error || t("بيانات غير مكتملة", "Incomplete data"));
+      return;
+    }
+    createRestaurantMut.mutate(val.payload, {
+      onSuccess: () => {
+        setShowAddRestaurant(false);
+        setNewRestBrandId("");
+        setNewRestName("");
+        setRestFormError(null);
+      },
+      onError: (err) => {
+        setRestFormError(getErrorMessage(err, lang) || t("فشل إضافة المطعم", "Failed to add restaurant"));
+      },
+    });
+  };
+
   const submitNewBranch = () => {
     const val = validateBranchCreate({ restaurantId: newBranchRestId, name: newBranchName, city: newBranchCity }, lang);
     if (!val.valid) {
@@ -2796,7 +2852,7 @@ function CABranches() {
           setBranchFormError(null);
         },
         onError: (err) => {
-          setBranchFormError(getErrorMessage(err) || t("فشل إرسال طلب إنشاء الفرع", "Failed to submit branch request"));
+          setBranchFormError(getErrorMessage(err, lang) || t("فشل إرسال طلب إنشاء الفرع", "Failed to submit branch request"));
         },
       }
     );
@@ -2804,10 +2860,145 @@ function CABranches() {
 
   return (
     <div className="space-y-5" dir={dir}>
-      <div className="flex items-center justify-between">
-        <div><h2 className="text-xl font-bold text-gray-800">{t("العلامات التجارية والفروع","Brands & Branches")}</h2><p className="text-gray-400 text-sm">{brandsTree.length} {t("علامات","brands")} · {allBranchesTree.length} {t("فرع","branches")}{pendingCount>0&&<span className="text-amber-600"> · {pendingCount} {t("قيد المراجعة","pending review")}</span>}</p></div>
-        <Btn variant="primary" onClick={()=>{ setShowAddBranch(true); setBranchFormError(null); }}><Plus size={13}/> {t("إضافة فرع","Add Branch")}</Btn>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">{t("العلامات التجارية والفروع","Brands & Branches")}</h2>
+          <p className="text-gray-400 text-sm">{brandsTree.length} {t("علامات","brands")} · {allBranchesTree.length} {t("فرع","branches")}{pendingCount>0&&<span className="text-amber-600"> · {pendingCount} {t("قيد المراجعة","pending review")}</span>}</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Btn onClick={() => { setShowAddBrand(true); setBrandFormError(null); }}>
+            <Plus size={13} /> {t("إضافة علامة", "Add Brand")}
+          </Btn>
+          <Btn onClick={() => { setShowAddRestaurant(true); setRestFormError(null); }} disabled={brandsTree.length === 0}>
+            <Plus size={13} /> {t("إضافة مطعم", "Add Restaurant")}
+          </Btn>
+          <Btn variant="primary" onClick={() => { setShowAddBranch(true); setBranchFormError(null); }}>
+            <Plus size={13} /> {t("إضافة فرع", "Add Branch")}
+          </Btn>
+        </div>
       </div>
+
+      {/* Add Brand Modal */}
+      {showAddBrand && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => !createBrandMut.isPending && setShowAddBrand(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5" onClick={e => e.stopPropagation()} dir={dir} role="dialog" aria-modal="true" aria-label={t("إضافة علامة تجارية جديدة", "Add New Brand")}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-800">{t("إضافة علامة تجارية جديدة", "Add New Brand")}</h3>
+              <button onClick={() => !createBrandMut.isPending && setShowAddBrand(false)} disabled={createBrandMut.isPending} className="text-gray-400 hover:text-gray-600" aria-label={t("إغلاق", "Close")}><X size={18} /></button>
+            </div>
+            <div className="space-y-3">
+              {brandFormError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                  <AlertTriangle size={14} className="shrink-0" />
+                  <span>{brandFormError}</span>
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1">{t("اسم العلامة التجارية *", "Brand Name *")}</label>
+                <input
+                  value={newBrandName}
+                  onChange={e => { setNewBrandName(e.target.value); if (brandFormError) setBrandFormError(null); }}
+                  disabled={createBrandMut.isPending}
+                  placeholder={t("مثال: شاورما لايت...", "e.g. Shawarma Light...")}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-purple-400 disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1">{t("الرمز المختصر (اختياري)", "Abbreviation (Optional)")}</label>
+                <input
+                  value={newBrandAbbr}
+                  onChange={e => setNewBrandAbbr(e.target.value)}
+                  disabled={createBrandMut.isPending}
+                  maxLength={4}
+                  placeholder={newBrandName.trim().slice(0, 2) || "SL"}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-purple-400 disabled:opacity-50 font-mono uppercase"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1">{t("لون العلامة التجارية", "Brand Color")}</label>
+                <div className="flex items-center gap-2 flex-wrap mb-2">
+                  {["#7C3AED", "#2563EB", "#E11D48", "#059669", "#D97706", "#4F46E5", "#0891B2", "#475569"].map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setNewBrandColor(c)}
+                      className={`w-7 h-7 rounded-lg transition-transform ${newBrandColor.toLowerCase() === c.toLowerCase() ? "scale-110 ring-2 ring-offset-2 ring-purple-600" : "hover:scale-105"}`}
+                      style={{ backgroundColor: c }}
+                      aria-label={c}
+                    />
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={newBrandColor}
+                  onChange={e => setNewBrandColor(e.target.value)}
+                  disabled={createBrandMut.isPending}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-purple-400 disabled:opacity-50 font-mono text-xs"
+                />
+              </div>
+              <div className="flex gap-2 justify-end pt-2">
+                <Btn onClick={() => setShowAddBrand(false)} disabled={createBrandMut.isPending}>{t("إلغاء", "Cancel")}</Btn>
+                <Btn variant="primary" onClick={submitNewBrand} disabled={createBrandMut.isPending}>
+                  {createBrandMut.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />} {t("إضافة العلامة", "Create Brand")}
+                </Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Restaurant Modal */}
+      {showAddRestaurant && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => !createRestaurantMut.isPending && setShowAddRestaurant(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5" onClick={e => e.stopPropagation()} dir={dir} role="dialog" aria-modal="true" aria-label={t("إضافة مطعم جديد", "Add New Restaurant")}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-800">{t("إضافة مطعم جديد", "Add New Restaurant")}</h3>
+              <button onClick={() => !createRestaurantMut.isPending && setShowAddRestaurant(false)} disabled={createRestaurantMut.isPending} className="text-gray-400 hover:text-gray-600" aria-label={t("إغلاق", "Close")}><X size={18} /></button>
+            </div>
+            <div className="space-y-3">
+              {restFormError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                  <AlertTriangle size={14} className="shrink-0" />
+                  <span>{restFormError}</span>
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1">{t("العلامة التجارية التابع لها *", "Parent Brand *")}</label>
+                <select
+                  value={newRestBrandId}
+                  onChange={e => { setNewRestBrandId(e.target.value); if (restFormError) setRestFormError(null); }}
+                  disabled={createRestaurantMut.isPending}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-purple-400 disabled:opacity-50"
+                >
+                  <option value="">{t("اختر علامة تجارية", "Select brand")}</option>
+                  {brandsTree.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1">{t("اسم المطعم *", "Restaurant Name *")}</label>
+                <input
+                  value={newRestName}
+                  onChange={e => { setNewRestName(e.target.value); if (restFormError) setRestFormError(null); }}
+                  disabled={createRestaurantMut.isPending}
+                  placeholder={t("مثال: مطعم شاورما لايت - المركز الرئيسي...", "e.g. Shawarma Light Main...")}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-purple-400 disabled:opacity-50"
+                />
+              </div>
+              <div className="bg-purple-50 border border-purple-100 rounded-xl px-3 py-2 text-[11px] text-purple-700">
+                {t("المطعم يربط العلامة التجارية بالفروع التابعة لها لتسهيل حصر التكاليف والعمليات.", "The restaurant links the brand to its branches for operational and expense grouping.")}
+              </div>
+              <div className="flex gap-2 justify-end pt-2">
+                <Btn onClick={() => setShowAddRestaurant(false)} disabled={createRestaurantMut.isPending}>{t("إلغاء", "Cancel")}</Btn>
+                <Btn variant="primary" onClick={submitNewRestaurant} disabled={createRestaurantMut.isPending}>
+                  {createRestaurantMut.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />} {t("إضافة المطعم", "Create Restaurant")}
+                </Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Branch Modal */}
       {showAddBranch&&(
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={()=>!createBranchMut.isPending&&setShowAddBranch(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5" onClick={e=>e.stopPropagation()} dir={dir} role="dialog" aria-modal="true" aria-label={t("إضافة فرع جديد","Add New Branch")}>
@@ -2822,6 +3013,21 @@ function CABranches() {
                   <span>{branchFormError}</span>
                 </div>
               )}
+              {brandsTree.length === 0 ? (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 space-y-2">
+                  <p>{t("لا توجد علامات تجارية مسجلة. يجب إضافة علامة تجارية ومطعم أولاً قبل إنشاء الفرع.", "No brands registered. You must create a brand and restaurant before adding a branch.")}</p>
+                  <Btn onClick={() => { setShowAddBranch(false); setShowAddBrand(true); }}>
+                    <Plus size={12} /> {t("إضافة علامة تجارية الآن", "Add Brand Now")}
+                  </Btn>
+                </div>
+              ) : selectedBrand && availableRestaurants.length === 0 ? (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between gap-2">
+                  <span>{t("لا توجد مطاعم لهذه العلامة. يرجى إنشاء مطعم أولاً.", "No restaurants for this brand. Please create a restaurant first.")}</span>
+                  <button onClick={() => { setNewRestBrandId(selectedBrand.id); setShowAddBranch(false); setShowAddRestaurant(true); }} className="font-bold underline shrink-0 text-amber-900">
+                    {t("إضافة مطعم", "Add Restaurant")}
+                  </button>
+                </div>
+              ) : null}
               <div>
                 <label className="text-xs font-semibold text-gray-600 block mb-1">{t("العلامة التجارية","Brand")}</label>
                 <select
@@ -2904,7 +3110,12 @@ function CABranches() {
       </div>
       <div className="space-y-3">
         {brandsTree.length===0 && (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center text-gray-400 text-sm">{t("لا توجد علامات تجارية بعد","No brands yet")}</div>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-8 text-center text-gray-400 text-sm space-y-3">
+            <p>{t("لا توجد علامات تجارية بعد. ابدأ بإنشاء علامة تجارية أولاً.", "No brands yet. Start by creating a brand first.")}</p>
+            <Btn variant="primary" onClick={() => { setShowAddBrand(true); setBrandFormError(null); }}>
+              <Plus size={13} /> {t("إضافة علامة تجارية أولى", "Add First Brand")}
+            </Btn>
+          </div>
         )}
         {brandsTree.map(brand=>(
           <div key={brand.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
@@ -2916,30 +3127,60 @@ function CABranches() {
             </button>
             {expandedBrand===brand.id&&(
               <div className="border-t border-gray-100">
-                {brand.restaurants.map(rest=>(
-                  <div key={rest.id} className="px-5 py-3 border-b border-gray-50">
-                    <p className="text-xs font-bold text-gray-500 mb-2">{rest.name}</p>
-                    <div className="space-y-2">
-                      {rest.branches.map(br=>{
-                        const pct=br.target>0?Math.round((br.salesM/br.target)*100):0;
-                        const pending=br.reviewStatus==="pending_review"||br.reviewStatus==="rejected";
-                        return (
-                          <div key={br.id} className={`flex items-center gap-4 px-3 py-2.5 rounded-lg ${pending?"bg-amber-50/40":"bg-gray-50"}`}>
-                            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{background:pending?"#d1d5db":brand.color}}>{(br.city||br.name||"?")[0]}</div>
-                            <div className="flex-1 min-w-0"><div className="flex items-center gap-1.5"><p className="font-semibold text-gray-700 text-xs truncate">{br.name}</p>{reviewBadge(br.reviewStatus)}</div><p className="text-[10px] text-gray-400">{t("م.الفرع:","Mgr:")} {br.mgr} · {br.city}</p></div>
-                            {pending ? (
-                              <span className="text-[10px] text-amber-600 flex-shrink-0">{br.reviewStatus==="rejected"?t("لم يُعتمد","Not approved"):t("بانتظار اعتماد الإدارة","Awaiting admin approval")}</span>
-                            ) : (<>
-                              <div className="w-28 flex-shrink-0"><div className="flex justify-between text-[10px] text-gray-400 mb-1"><span>{pct}%</span></div><div className="w-full h-1.5 bg-gray-200 rounded-full"><div className={`h-1.5 rounded-full ${pct>=100?"bg-emerald-500":pct>=80?"bg-blue-500":"bg-amber-500"}`} style={{width:`${Math.min(100,pct)}%`}}/></div></div>
-                              <p className="font-mono font-bold text-gray-700 text-xs flex-shrink-0">{fmt(br.salesM)} {t("ر.س","SAR")}</p>
-                              <button onClick={()=>{ setTransferFor({id:br.id,name:br.name}); setNewMgrUserId(br.mgrUserId ?? ""); }} title={t("نقل مدير الفرع","Transfer manager")} className="p-1.5 rounded-lg text-gray-400 hover:bg-purple-50 hover:text-purple-600 flex-shrink-0"><ArrowLeftRight size={13}/></button>
-                            </>)}
-                          </div>
-                        );
-                      })}
-                    </div>
+                <div className="px-5 py-2.5 bg-gray-50/70 border-b border-gray-100 flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-600">{t("المطاعم والفروع التابعة", "Associated Restaurants & Branches")}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNewRestBrandId(brand.id);
+                      setShowAddRestaurant(true);
+                      setRestFormError(null);
+                    }}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100 flex items-center gap-1 transition-colors"
+                  >
+                    <Plus size={12} /> {t("إضافة مطعم لهذه العلامة", "Add Restaurant")}
+                  </button>
+                </div>
+                {brand.restaurants.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-gray-400 space-y-2">
+                    <p>{t("لا توجد مطاعم مسجلة تحت هذه العلامة التجارية.", "No restaurants registered under this brand yet.")}</p>
+                    <button
+                      onClick={() => {
+                        setNewRestBrandId(brand.id);
+                        setShowAddRestaurant(true);
+                        setRestFormError(null);
+                      }}
+                      className="px-3 py-1.5 text-xs font-bold rounded-lg bg-purple-600 text-white hover:bg-purple-700 inline-flex items-center gap-1"
+                    >
+                      <Plus size={12} /> {t("إضافة أول مطعم", "Add First Restaurant")}
+                    </button>
                   </div>
-                ))}
+                ) : (
+                  brand.restaurants.map(rest=>(
+                    <div key={rest.id} className="px-5 py-3 border-b border-gray-50">
+                      <p className="text-xs font-bold text-gray-500 mb-2">{rest.name}</p>
+                      <div className="space-y-2">
+                        {rest.branches.map(br=>{
+                          const pct=br.target>0?Math.round((br.salesM/br.target)*100):0;
+                          const pending=br.reviewStatus==="pending_review"||br.reviewStatus==="rejected";
+                          return (
+                            <div key={br.id} className={`flex items-center gap-4 px-3 py-2.5 rounded-lg ${pending?"bg-amber-50/40":"bg-gray-50"}`}>
+                              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{background:pending?"#d1d5db":brand.color}}>{(br.city||br.name||"?")[0]}</div>
+                              <div className="flex-1 min-w-0"><div className="flex items-center gap-1.5"><p className="font-semibold text-gray-700 text-xs truncate">{br.name}</p>{reviewBadge(br.reviewStatus)}</div><p className="text-[10px] text-gray-400">{t("م.الفرع:","Mgr:")} {br.mgr} · {br.city}</p></div>
+                              {pending ? (
+                                <span className="text-[10px] text-amber-600 flex-shrink-0">{br.reviewStatus==="rejected"?t("لم يُعتمد","Not approved"):t("بانتظار اعتماد الإدارة","Awaiting admin approval")}</span>
+                              ) : (<>
+                                <div className="w-28 flex-shrink-0"><div className="flex justify-between text-[10px] text-gray-400 mb-1"><span>{pct}%</span></div><div className="w-full h-1.5 bg-gray-200 rounded-full"><div className={`h-1.5 rounded-full ${pct>=100?"bg-emerald-500":pct>=80?"bg-blue-500":"bg-amber-500"}`} style={{width:`${Math.min(100,pct)}%`}}/></div></div>
+                                <p className="font-mono font-bold text-gray-700 text-xs flex-shrink-0">{fmt(br.salesM)} {t("ر.س","SAR")}</p>
+                                <button onClick={()=>{ setTransferFor({id:br.id,name:br.name}); setNewMgrUserId(br.mgrUserId ?? ""); }} title={t("نقل مدير الفرع","Transfer manager")} className="p-1.5 rounded-lg text-gray-400 hover:bg-purple-50 hover:text-purple-600 flex-shrink-0"><ArrowLeftRight size={13}/></button>
+                              </>)}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </div>

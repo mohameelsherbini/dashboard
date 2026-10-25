@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   validateBranchCreate,
+  validateBrandCreate,
+  validateRestaurantCreate,
   validateUserEdit,
   parseInvoice,
   calculateBillingKpis,
@@ -346,4 +348,51 @@ test("GO-07 B07: editAsset labels are programmatically associated with every for
     "edit-asset-custodian",
   ]);
   assert.deepEqual(controls, labels, "each labelled control must have a matching id exactly once");
+});
+
+test("DB-R04: validateBrandCreate enforces min 2 chars, validates hex color, and derives abbr", () => {
+  // Empty / short name
+  const r1 = validateBrandCreate({ name: "" }, "ar");
+  assert.equal(r1.valid, false);
+  assert.match(r1.error!, /حرفين/);
+
+  // Invalid color
+  const r2 = validateBrandCreate({ name: "شاورما كينج", color: "invalid-color" }, "ar");
+  assert.equal(r2.valid, false);
+  assert.match(r2.error!, /Hex/);
+
+  // Valid brand creation
+  const r3 = validateBrandCreate({ name: "شاورما كينج", color: "#E11D48", abbr: "SK" }, "ar");
+  assert.equal(r3.valid, true);
+  assert.deepEqual(r3.payload, {
+    name: "شاورما كينج",
+    color: "#E11D48",
+    abbr: "SK",
+  });
+
+  // Valid with auto-abbr and default color
+  const r4 = validateBrandCreate({ name: "برجر فاير" });
+  assert.equal(r4.valid, true);
+  assert.equal(r4.payload?.abbr, "بر");
+  assert.equal(r4.payload?.color, "#7C3AED");
+});
+
+test("DB-R04: validateRestaurantCreate enforces parent brandId and at least 2 char name", () => {
+  // Missing parent brandId
+  const r1 = validateRestaurantCreate({ brandId: "", name: "فرع رئيسي" }, "ar");
+  assert.equal(r1.valid, false);
+  assert.match(r1.error!, /العلامة التجارية/);
+
+  // Short restaurant name
+  const r2 = validateRestaurantCreate({ brandId: "brand_1", name: "أ" }, "ar");
+  assert.equal(r2.valid, false);
+  assert.match(r2.error!, /حرفين/);
+
+  // Valid restaurant creation
+  const r3 = validateRestaurantCreate({ brandId: "brand_1", name: "مطعم السليمانية" }, "ar");
+  assert.equal(r3.valid, true);
+  assert.deepEqual(r3.payload, {
+    brandId: "brand_1",
+    name: "مطعم السليمانية",
+  });
 });
