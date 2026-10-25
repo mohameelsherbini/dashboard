@@ -8925,18 +8925,47 @@ function CompanyDashboardInner() {
   const initRole = chooseGrantedRole(user,companyRoles,
     initSel?.slug === "asab/CompanyDashboard" ? initSel.role : null) as CRole | null;
   const [role, setRole] = useState<CRole|null>(initRole);
-  const [page, setPage] = useState<string>(initRole ? DEFAULT_PAGE[initRole] : "");
+
+  const getUrlPage = () => {
+    try {
+      if (typeof window === "undefined" || !window.location) return null;
+      const sp = new URLSearchParams(window.location.search);
+      const p = sp.get("page");
+      if (p && /^[a-zA-Z0-9_-]{1,64}$/.test(p)) return p;
+      const hash = window.location.hash || "";
+      const q = hash.indexOf("?");
+      if (q !== -1) {
+        const hp = new URLSearchParams(hash.slice(q)).get("page");
+        if (hp && /^[a-zA-Z0-9_-]{1,64}$/.test(hp)) return hp;
+      }
+    } catch { /* ignore */ }
+    return null;
+  };
+
+  const [page, setPage] = useState<string>(() => {
+    if (!initRole) return "";
+    const defaultP = DEFAULT_PAGE[initRole];
+    const urlP = getUrlPage();
+    return urlP ? pageForRole(initRole, urlP, defaultP) : defaultP;
+  });
   const allowedRoles = grantedRoleKeys(user).filter(r => companyRoles.includes(r)) as CRole[];
   const currentRole = role && allowedRoles.includes(role) ? role : allowedRoles[0] ?? null;
   const currentPage = currentRole ? pageForRole(currentRole,page,DEFAULT_PAGE[currentRole]) : "";
   const { ops, approve, reject, requestClarification, finalApprove, bulkApprove, bulkFinalApprove, actionsPending, shiftReviewPage, setShiftReviewPage, rejectModalProps, clarifyModalProps, clearDialogs } = useSharedOps(switchingRole ? null : currentRole, financialAccessFingerprint(user));
 
-  // Tag the current history entry with a page so Back/Forward can restore it.
+  // Tag the current history entry with a page so Back/Forward can restore it and refresh preserves it.
   const tagHistory = (p:string, replace=false) => {
     try {
+      if (typeof window === "undefined" || !window.history || !window.location) return;
       const st = { ...(window.history.state || {}), asabCoPage: p };
-      if (replace) window.history.replaceState(st, "");
-      else window.history.pushState(st, "");
+      const url = new URL(window.location.href);
+      if (url.hash.includes("?")) {
+        const qIndex = url.hash.indexOf("?");
+        url.hash = url.hash.slice(0, qIndex);
+      }
+      url.searchParams.set("page", p);
+      if (replace) window.history.replaceState(st, "", url.toString());
+      else window.history.pushState(st, "", url.toString());
     } catch { /* history unavailable */ }
   };
   const selectRole = async (r:CRole) => {
@@ -8965,7 +8994,8 @@ function CompanyDashboardInner() {
   // Browser Back/Forward → restore the previous internal page (URL stays on the preview hash).
   useEffect(() => {
     const onPop = (e:PopStateEvent) => {
-      const p = (e.state as { asabCoPage?: string } | null)?.asabCoPage;
+      const statePage = (e.state as { asabCoPage?: string } | null)?.asabCoPage;
+      const p = statePage || getUrlPage();
       if (typeof p === "string" && currentRole && pageForRole(currentRole,p,"") === p) setPage(p);
     };
     window.addEventListener("popstate", onPop);
@@ -8973,7 +9003,18 @@ function CompanyDashboardInner() {
   }, [currentRole]);
 
   useEffect(() => {
-    if (role !== currentRole) { setRole(currentRole); setPage(currentRole ? DEFAULT_PAGE[currentRole] : ""); }
+    if (currentPage) {
+      tagHistory(currentPage, true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (role !== currentRole) {
+      setRole(currentRole);
+      const nextP = currentRole ? DEFAULT_PAGE[currentRole] : "";
+      setPage(nextP);
+      if (nextP) tagHistory(nextP, true);
+    }
   }, [role,currentRole]);
 
   if(!currentRole) return <p role="alert">{t("ليس لديك صلاحية للوصول إلى بوابة الشركات","You cannot access the company dashboard")}</p>;
