@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { formatPlanPrice, calculateBillingKpis } from "./companyAdminGuards.ts";
 import { formatHalalasAmount } from "../../../api/money.ts";
 
@@ -33,4 +34,21 @@ test("DB-1: calculateBillingKpis preserves exact halalas without Math.round trun
   );
   assert.equal(kpis.totalPaid, 19.99);
   assert.equal(kpis.companyTotalDue, 1.5);
+});
+
+test("DB-1: OpRow renders exact sales breakdown amounts without Math.round truncation", () => {
+  const opRowSource = readFileSync(
+    new URL("./_shared/OpRow.tsx", import.meta.url),
+    "utf8"
+  );
+  assert.doesNotMatch(
+    opRowSource,
+    /Math\.round\(op\.salesBreakdown/,
+    "OpRow must not use Math.round on salesBreakdown amounts"
+  );
+  assert.match(
+    opRowSource,
+    /fmtAmt\(op\.salesBreakdown\.varianceHalalas \/ 100\)/,
+    "OpRow must format exact varianceHalalas / 100"
+  );
 });
