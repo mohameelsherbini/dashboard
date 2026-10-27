@@ -557,19 +557,6 @@ export function useCompanyBrands() {
   });
 }
 
-/**
- * @deprecated DB-R04: Only Platform Admin is permitted to create Brands.
- * Company Admin brand creation is disabled to prevent unauthorized creation attempts.
- */
-export function useCreateBrand() {
-  return useMutation({
-    mutationFn: async () => {
-      throw new Error("Only Platform Admin is permitted to create brands.");
-    },
-    onError: () => toast.error("إنشاء العلامات التجارية مقتصر على مدير المنصة فقط"),
-  });
-}
-
 export function useUpdateBrand() {
   const qc = useQueryClient();
   return useMutation({
@@ -596,19 +583,6 @@ export function useDeleteBrand() {
       toast.success("تم حذف العلامة");
     },
     onError: (e) => toast.error(getErrorMessage(e, "ar")),
-  });
-}
-
-/**
- * @deprecated DB-R04: Only Platform Admin is permitted to create Restaurants.
- * Company Admin restaurant creation is disabled to prevent unauthorized creation attempts.
- */
-export function useCreateRestaurant() {
-  return useMutation({
-    mutationFn: async () => {
-      throw new Error("Only Platform Admin is permitted to create restaurants.");
-    },
-    onError: () => toast.error("إنشاء المطاعم مقتصر على مدير المنصة فقط"),
   });
 }
 

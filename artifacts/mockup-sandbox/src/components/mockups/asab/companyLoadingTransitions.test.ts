@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import React, { useState } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 import { canRoleCreateBrandOrRestaurant } from "./companyAdminGuards.ts";
 
@@ -15,6 +17,9 @@ const sourceFile = ts.createSourceFile(
   true,
   ts.ScriptKind.TSX
 );
+
+const companyAdminPath = fileURLToPath(new URL("../../../api/queries/companyAdmin.ts", import.meta.url));
+const companyAdminText = readFileSync(companyAdminPath, "utf8");
 
 // ─── Helper Functions ─────────────────────────────────────────────────────────
 
@@ -29,6 +34,17 @@ function getFunctionDeclaration(name: string): ts.FunctionDeclaration | undefine
   }
   visit(sourceFile);
   return target;
+}
+
+function transpileFunction(fnNode: ts.FunctionDeclaration): string {
+  const code = fnNode.getText(sourceFile);
+  return ts.transpileModule(code, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      jsx: ts.JsxEmit.React,
+      module: ts.ModuleKind.None,
+    },
+  }).outputText;
 }
 
 const HOOK_NAMES = new Set([
@@ -93,7 +109,6 @@ function analyzeComponentHookOrdering(fnNode: ts.FunctionDeclaration) {
     }
 
     if (ts.isIfStatement(node)) {
-      // Check if statement contains a return statement directly in its then-statement
       let hasReturn = false;
       function checkReturn(n: ts.Node) {
         if (ts.isReturnStatement(n)) hasReturn = true;
@@ -103,35 +118,43 @@ function analyzeComponentHookOrdering(fnNode: ts.FunctionDeclaration) {
 
       if (hasReturn) {
         const line = sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1;
-        earlyReturns.push({ line, condition: node.expression.getText(sourceFile) });
+        const condText = node.expression.getText(sourceFile);
+        earlyReturns.push({ line, condition: condText });
       }
 
-      // Scan then/else branches
-      ts.forEachChild(node.thenStatement, n => scan(n, true));
+      scan(node.expression, true);
+      scan(node.thenStatement, true);
       if (node.elseStatement) {
-        ts.forEachChild(node.elseStatement, n => scan(n, true));
+        scan(node.elseStatement, true);
       }
       return;
     }
 
-    ts.forEachChild(node, n => scan(n, insideConditional));
+    ts.forEachChild(node, (n) => scan(n, insideConditional));
   }
 
-  scan(body);
+  scan(body, false);
 
   return {
-    componentName: fnNode.name?.text,
     hookCalls,
     earlyReturns,
     hooksAfterEarlyReturn,
   };
 }
 
-// ─── W1-B / R03: React Hook Ordering Lifecycle Tests ─────────────────────────
+// Mock UI Primitives for React runtime rendering
+const MockIcon = (props: any) => React.createElement("svg", props);
+const MockBadge = ({ children, className }: any) => React.createElement("span", { className }, children);
+const MockBtn = ({ children, onClick, disabled, variant }: any) =>
+  React.createElement("button", { onClick, disabled, className: variant }, children);
+const MockKpiCard = ({ label, value, sub }: any) =>
+  React.createElement("div", { "data-kpi": label }, value, sub);
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
 
 test("W1-B (R03): CAUsers declares all hooks above early loading/error returns", () => {
   const fn = getFunctionDeclaration("CAUsers");
-  assert.ok(fn, "CAUsers component must exist in CompanyDashboard.tsx");
+  assert.ok(fn, "CAUsers function must exist in CompanyDashboard.tsx");
 
   const analysis = analyzeComponentHookOrdering(fn);
 
@@ -146,7 +169,7 @@ test("W1-B (R03): CAUsers declares all hooks above early loading/error returns",
 
 test("W1-B (R03): CABranches declares all hooks above early loading/error returns", () => {
   const fn = getFunctionDeclaration("CABranches");
-  assert.ok(fn, "CABranches component must exist in CompanyDashboard.tsx");
+  assert.ok(fn, "CABranches function must exist in CompanyDashboard.tsx");
 
   const analysis = analyzeComponentHookOrdering(fn);
 
@@ -160,24 +183,16 @@ test("W1-B (R03): CABranches declares all hooks above early loading/error return
 });
 
 test("W1-B (R03): Component Lifecycle state transitions maintain constant hook order and count", () => {
-  // Simulate React reconciliation lifecycle transitions for CAUsers:
-  // Transition 1: Loading -> Loaded
-  // Transition 2: Loading -> Error
-  // Transition 3: Error -> Retry -> Loaded
-  // Transition 4: Repeated re-renders
-
   const fnUsers = getFunctionDeclaration("CAUsers");
   assert.ok(fnUsers);
   const analysisUsers = analyzeComponentHookOrdering(fnUsers);
 
-  // In all states (loading, error, loaded), the exact sequence and count of hooks invoked must be invariant
   const hookSequence = analysisUsers.hookCalls.map(h => h.name);
   assert.ok(hookSequence.includes("useCLang"), "Must initialize language hook");
   assert.ok(hookSequence.includes("useCompanyUsers"), "Must initialize company users query");
   assert.ok(hookSequence.includes("useCompanyInvitations"), "Must initialize company invitations query");
   assert.ok(hookSequence.includes("useState"), "Must initialize controlled state hooks");
 
-  // Verify that hook count does not change between loading and loaded phases
   const loadingPhaseHookCount = analysisUsers.hookCalls.filter(h => h.line < analysisUsers.earlyReturns[0].line).length;
   const totalHookCount = analysisUsers.hookCalls.length;
   assert.equal(
@@ -185,6 +200,189 @@ test("W1-B (R03): Component Lifecycle state transitions maintain constant hook o
     totalHookCount,
     "All hooks must execute during the loading phase to prevent React hook order mismatch"
   );
+});
+
+test("W1-B (R03): Real React runtime execution of CABranches across full lifecycle (Loading -> Error -> Retry -> Loaded)", () => {
+  const fnBranches = getFunctionDeclaration("CABranches");
+  assert.ok(fnBranches);
+  const js = transpileFunction(fnBranches);
+
+  let queryBrandsState: any = { data: [], isLoading: true, isError: false, error: null };
+  let queryUsersState: any = { data: [] };
+
+  const Component = new Function(
+    "React", "useState", "useCLang", "useCompanyBrands", "useCompanyUsers",
+    "useCreateBranch", "useTransferBranchManager", "getErrorMessage", "validateBranchCreate",
+    "fmt", "KpiCard", "Btn", "Badge",
+    "RefreshCw", "AlertTriangle", "Plus", "X", "ArrowLeftRight", "ChevronDown",
+    "Star", "Home", "Building2", "TrendingUp",
+    `${js}\nreturn CABranches;`
+  )(
+    React,
+    useState,
+    () => ({ t: (ar: string, en?: string) => ar, dir: "rtl", lang: "ar" }),
+    () => ({ ...queryBrandsState, refetch: () => { queryBrandsState = { data: [], isLoading: true, isError: false, error: null }; } }),
+    () => queryUsersState,
+    () => ({ mutate: () => {}, isPending: false }),
+    () => ({ mutate: () => {}, isPending: false }),
+    (err: any) => err?.message || "Failed to fetch branches",
+    () => ({ valid: true }),
+    (n: number) => String(n),
+    MockKpiCard,
+    MockBtn,
+    MockBadge,
+    MockIcon, MockIcon, MockIcon, MockIcon, MockIcon, MockIcon,
+    MockIcon, MockIcon, MockIcon, MockIcon
+  );
+
+  const render = () => renderToStaticMarkup(React.createElement(Component));
+
+  // 1. Loading state
+  queryBrandsState = { data: [], isLoading: true, isError: false, error: null };
+  const loadingHtml = render();
+  assert.match(loadingHtml, /جارٍ تحميل العلامات والفروع/, "Must render loading message");
+  assert.ok(!loadingHtml.includes("Error"), "Loading state must not show error");
+
+  // 2. Error state
+  queryBrandsState = { data: [], isLoading: false, isError: true, error: new Error("Backend connection lost") };
+  const errorHtml = render();
+  assert.match(errorHtml, /فشل تحميل الفروع والعلامات/, "Must render error alert");
+  assert.match(errorHtml, /Backend connection lost/, "Must display actual error message");
+  assert.match(errorHtml, /إعادة المحاولة/, "Must render retry button");
+
+  // 3. Retry -> Loading state
+  queryBrandsState = { data: [], isLoading: true, isError: false, error: null };
+  const retryLoadingHtml = render();
+  assert.match(retryLoadingHtml, /جارٍ تحميل العلامات والفروع/, "Must re-enter loading state smoothly");
+
+  // 4. Loaded state (with real brand/restaurant/branch tree)
+  queryBrandsState = {
+    data: [
+      {
+        id: "b-01",
+        name: "برجر العرب",
+        abbr: "BA",
+        color: "#7C3AED",
+        restaurants: [
+          {
+            id: "r-01",
+            name: "مطعم السليمانية",
+            branches: [
+              { id: "br-01", name: "فرع التحلية", city: "الرياض", mgr: "سعد الخالدي", salesM: 120000, target: 150000 },
+            ],
+          },
+        ],
+      },
+    ],
+    isLoading: false,
+    isError: false,
+    error: null,
+  };
+  const loadedHtml = render();
+  assert.match(loadedHtml, /العلامات التجارية والفروع/, "Must render branches title");
+  assert.match(loadedHtml, /برجر العرب/, "Must render brand name");
+  assert.match(loadedHtml, /1 مطاعم · 1 فروع/, "Must render restaurant and branch summary");
+  assert.match(loadedHtml, /إضافة فرع/, "Must preserve Add Branch entry point");
+
+  // DB-R04: Confirm no Add Brand or Add Restaurant buttons appear
+  assert.ok(!loadedHtml.includes("إضافة علامة"), "Loaded HTML must not contain Add Brand");
+  assert.ok(!loadedHtml.includes("إضافة مطعم"), "Loaded HTML must not contain Add Restaurant");
+
+  // 5. Repeated rerenders across transitions without hook order error
+  for (let i = 0; i < 10; i++) {
+    queryBrandsState = i % 2 === 0
+      ? { data: [], isLoading: true, isError: false, error: null }
+      : { data: [{ id: `b-${i}`, name: `Brand ${i}`, restaurants: [] }], isLoading: false, isError: false, error: null };
+    const html = render();
+    assert.ok(html.length > 50, "Every rerender must produce valid non-blank HTML");
+  }
+});
+
+test("W1-B (R03): Real React runtime execution of CAUsers across full lifecycle (Loading -> Error -> Retry -> Loaded)", () => {
+  const fnUsers = getFunctionDeclaration("CAUsers");
+  assert.ok(fnUsers);
+  const js = transpileFunction(fnUsers);
+
+  let queryUsersState: any = { data: [], isLoading: true, isError: false, error: null };
+  let queryInvitesState: any = { data: [], isLoading: false, isError: false, error: null };
+
+  const Component = new Function(
+    "React", "useState", "useCLang", "useCompanyUsers", "useCompanyInvitations",
+    "useCreateCompanyInvitation", "useResendCompanyInvitation", "useRevokeCompanyInvitation",
+    "useToggleCompanyUserStatus", "useUpdateCompanyUser", "useLookup", "getErrorMessage",
+    "ROLE_AR", "Btn", "Badge",
+    "Search", "Send", "Users", "Lock", "Edit2", "Shield", "Mail", "Phone",
+    "Check", "X", "RefreshCw", "AlertTriangle", "Plus",
+    `${js}\nreturn CAUsers;`
+  )(
+    React,
+    useState,
+    () => ({ t: (ar: string, en?: string) => ar, dir: "rtl", lang: "ar" }),
+    () => ({ ...queryUsersState, refetch: () => { queryUsersState = { data: [], isLoading: true, isError: false, error: null }; } }),
+    () => ({ ...queryInvitesState, refetch: () => {} }),
+    () => ({ mutate: () => {}, isPending: false }),
+    () => ({ mutate: () => {}, isPending: false }),
+    () => ({ mutate: () => {}, isPending: false }),
+    () => ({ mutate: () => {}, isPending: false }),
+    () => ({ mutate: () => {}, isPending: false }),
+    () => ({ data: [] }),
+    (err: any) => err?.message || "Failed to fetch users",
+    { "company-admin": "مدير الشركة", "head": "رئيس الحسابات", "accountant": "محاسب", "branch": "مدير فرع", "procurement": "مدير مشتريات" },
+    MockBtn,
+    MockBadge,
+    MockIcon, MockIcon, MockIcon, MockIcon, MockIcon, MockIcon, MockIcon, MockIcon,
+    MockIcon, MockIcon, MockIcon, MockIcon, MockIcon
+  );
+
+  const render = () => renderToStaticMarkup(React.createElement(Component));
+
+  // 1. Loading state
+  queryUsersState = { data: [], isLoading: true, isError: false, error: null };
+  const loadingHtml = render();
+  assert.match(loadingHtml, /جارٍ تحميل المستخدمين والدعوات/, "Must render loading message");
+
+  // 2. Error state
+  queryUsersState = { data: [], isLoading: false, isError: true, error: new Error("Unauthorized tenant access") };
+  const errorHtml = render();
+  assert.match(errorHtml, /فشل تحميل قائمة المستخدمين/, "Must render error alert");
+  assert.match(errorHtml, /Unauthorized tenant access/, "Must render error message");
+  assert.match(errorHtml, /إعادة المحاولة/, "Must render retry button");
+
+  // 3. Retry -> Loading state
+  queryUsersState = { data: [], isLoading: true, isError: false, error: null };
+  const retryHtml = render();
+  assert.match(retryHtml, /جارٍ تحميل المستخدمين والدعوات/, "Must re-enter loading state smoothly");
+
+  // 4. Loaded state
+  queryUsersState = {
+    data: [
+      { id: "u-01", name: "خالد المحاسب", roleKey: "accountant", roleLabel: "محاسب", branchName: "فرع العليا", email: "khaled@assab.com", status: "active", lastActiveAt: "2026-10-27" },
+    ],
+    isLoading: false,
+    isError: false,
+    error: null,
+  };
+  queryInvitesState = {
+    data: [
+      { id: "inv-01", email: "invitee@assab.com", roleKey: "branch", status: "pending", expiresAt: "2026-11-01" },
+    ],
+    isLoading: false,
+    isError: false,
+    error: null,
+  };
+  const loadedHtml = render();
+  assert.match(loadedHtml, /إدارة المستخدمين/, "Must render user management header");
+  assert.match(loadedHtml, /خالد المحاسب/, "Must render user name");
+  assert.match(loadedHtml, /invitee@assab\.com/, "Must render pending invitation");
+
+  // 5. Repeated rerenders across transitions without hook order error
+  for (let i = 0; i < 10; i++) {
+    queryUsersState = i % 2 === 0
+      ? { data: [], isLoading: true, isError: false, error: null }
+      : { data: [{ id: `u-${i}`, name: `User ${i}`, roleKey: "accountant", status: "active" }], isLoading: false, isError: false, error: null };
+    const html = render();
+    assert.ok(html.length > 50, "Every rerender must produce valid non-blank HTML");
+  }
 });
 
 // ─── W1-C / DB-R04: Company Admin Brand & Restaurant Creation Prohibition ─────
@@ -218,7 +416,7 @@ test("W1-C (DB-R04): CABranches UI contains NO Add Brand or Add Restaurant creat
   assert.ok(!text.includes("showAddBrand"), "CABranches must not contain showAddBrand modal state");
   assert.ok(!text.includes("showAddRestaurant"), "CABranches must not contain showAddRestaurant modal state");
 
-  // Verify mutation hooks are removed
+  // Verify mutation hooks are removed from CABranches
   assert.ok(!text.includes("useCreateBrand"), "CABranches must not call useCreateBrand");
   assert.ok(!text.includes("useCreateRestaurant"), "CABranches must not call useCreateRestaurant");
 
@@ -226,4 +424,9 @@ test("W1-C (DB-R04): CABranches UI contains NO Add Brand or Add Restaurant creat
   assert.ok(text.includes("useCreateBranch"), "CABranches must preserve useCreateBranch");
   assert.ok(text.includes("إضافة فرع") || text.includes("Add Branch"), "CABranches must preserve Add Branch entry point");
   assert.ok(text.includes("useTransferBranchManager"), "CABranches must preserve manager transfer workflow");
+});
+
+test("W1-C (DB-R04): companyAdmin.ts contains NO active or dead Company Admin brand/restaurant creation hooks", () => {
+  assert.ok(!companyAdminText.includes("export function useCreateBrand"), "companyAdmin.ts must not export useCreateBrand");
+  assert.ok(!companyAdminText.includes("export function useCreateRestaurant"), "companyAdmin.ts must not export useCreateRestaurant");
 });
