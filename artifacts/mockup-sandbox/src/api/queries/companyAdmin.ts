@@ -557,18 +557,16 @@ export function useCompanyBrands() {
   });
 }
 
+/**
+ * @deprecated DB-R04: Only Platform Admin is permitted to create Brands.
+ * Company Admin brand creation is disabled to prevent unauthorized creation attempts.
+ */
 export function useCreateBrand() {
-  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: { name: string; color?: string; abbr?: string }) => {
-      const res = await api.post<Brand>("/company/me/brands", body);
-      return res.data;
+    mutationFn: async () => {
+      throw new Error("Only Platform Admin is permitted to create brands.");
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.companyBrands });
-      toast.success("تم إضافة العلامة التجارية");
-    },
-    onError: (e) => toast.error(getErrorMessage(e, "ar")),
+    onError: () => toast.error("إنشاء العلامات التجارية مقتصر على مدير المنصة فقط"),
   });
 }
 
@@ -601,21 +599,16 @@ export function useDeleteBrand() {
   });
 }
 
+/**
+ * @deprecated DB-R04: Only Platform Admin is permitted to create Restaurants.
+ * Company Admin restaurant creation is disabled to prevent unauthorized creation attempts.
+ */
 export function useCreateRestaurant() {
-  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: { brandId: string; name: string }) => {
-      const res = await api.post<Restaurant>(
-        "/company/me/restaurants",
-        body,
-      );
-      return res.data;
+    mutationFn: async () => {
+      throw new Error("Only Platform Admin is permitted to create restaurants.");
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.companyBrands });
-      toast.success("تم إضافة المطعم");
-    },
-    onError: (e) => toast.error(getErrorMessage(e, "ar")),
+    onError: () => toast.error("إنشاء المطاعم مقتصر على مدير المنصة فقط"),
   });
 }
 

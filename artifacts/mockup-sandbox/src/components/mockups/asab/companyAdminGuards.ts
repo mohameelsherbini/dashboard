@@ -36,7 +36,16 @@ export function validateBranchCreate(
   return { valid: true };
 }
 
-// ─── DB-R04: Brand & Restaurant Creation Validation ──────────────────────────
+// ─── DB-R04: Brand & Restaurant Creation Validation & Role Guard ─────────────
+/**
+ * DB-R04 / W1-C: Role permission check for Brand and Restaurant creation.
+ * Only Platform Admin is permitted to create Brands and Restaurants.
+ * Company Admin is explicitly denied creation functionality.
+ */
+export function canRoleCreateBrandOrRestaurant(roleKey: string): boolean {
+  return roleKey === "admin" || roleKey === "platform-admin" || roleKey === "super-admin";
+}
+
 export interface BrandCreateDraft {
   name: string;
   color?: string;
