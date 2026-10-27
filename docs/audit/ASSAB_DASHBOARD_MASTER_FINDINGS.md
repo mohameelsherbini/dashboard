@@ -2967,8 +2967,20 @@ Reconciles Dashboard frontend (`7602da1`) with Backend v3.5 endpoints (`26f86c6`
 | **BE-06** | Backend Wave 1 | Do not reserve custody on expense pre-approval (EXP-10 / AC-27). | `fix/v35-be-06` (`worktree_be06`) | `e8605c62405e818e73d25f5d744fd7452acd3ce3` | `ExpenseCustodyLifecycleTest` (6/6 PASS, exit 0) | `FIXED_AND_VERIFIED` |
 | **BE-07** | Backend Wave 1 | Reverse employee allocation with credit entries instead of deletion (AUD-01). | `fix/v35-be-07` (`worktree_be07`) | `c698e167e750c670b554fbdb29b09ae7d2c8c21d` | `EmployeeAllocationReversalTest` (2/2 PASS, exit 0), `InventoryWasteTest` (23/23 PASS) | `FIXED_AND_VERIFIED` |
 | **BE-08** | Backend Wave 1 | Regression test asserting cashier shift consolidated report from multiple devices/drawers (OPS-09 / AC-47). | `fix/v35-be-08` (`worktree_be08`) | `69e2b9e974fc4f209e5eb1ba90d16c1e036269b1` | `CashierShiftConsolidatedReportTest` (2/2 PASS, exit 0), `ShiftsTest` (18/18 PASS), `ShiftOperationalResponsibilityTest` (10/10 PASS) | `FIXED_AND_VERIFIED` |
+| **BE-31** | Backend Wave 1 | Restrict Brand and Restaurant creation to Platform Admin; return 403 Forbidden with zero side effects for all company/operational roles. | `fix/v35-be-31-brand-restaurant-creation-guard` | `6f579b6fe69d2828adef99aeb510997e03217d5f` | `BrandRestaurantCreationGuardTest` (6/6 PASS, 25 assertions, exit 0) | `FIXED_AND_VERIFIED` |
+| **W1-B-HOOKS** | Dashboard Wave 1 | React hook ordering invariance in `CABranches` & `CAUsers` across Loading -> Error -> Retry -> Loaded transitions (prevents blank screen crashes). | `fix/v35-dashboard-runtime-recovery` | `7906f1e1ee3f1e4d3cf08b968f013da244d1f6ac` | `companyLoadingTransitions.test.ts` (8/8 PASS, exit 0) | `FIXED_AND_VERIFIED` |
+| **W1-C-BRAND-REST** | Dashboard Wave 1 | Remove Company Admin Add Brand/Restaurant buttons, modals, and mutation hooks; enforce platform-only role guard `canRoleCreateBrandOrRestaurant`. | `fix/v35-dashboard-runtime-recovery` | `7906f1e1ee3f1e4d3cf08b968f013da244d1f6ac` | `companyLoadingTransitions.test.ts` (8/8 PASS, exit 0) | `FIXED_AND_VERIFIED` |
 
-### 12.2 Decision-Gated Items on Architectural HOLD
+### 12.2 Finding ID Traceability & Crosswalk (Unambiguous Disambiguation)
+
+To prevent confusion with preexisting historical Dashboard Recovery findings:
+- **`DB-R03` (Historical):** Preserved for subscription billing sidebar details (`CompanyLayout.tsx`).
+- **`DB-R04` (Historical):** Preserved for restaurant empty state and active brand filter in restaurants view.
+- **`W1-B-HOOKS` (Wave 1):** Dedicated ID for React Hook ordering invariance under conditional transitions.
+- **`W1-C-BRAND-REST` (Wave 1):** Dedicated ID for Company Admin Brand & Restaurant creation separation.
+- **`BE-31` (Wave 1):** Dedicated ID for Backend Platform Admin Brand & Restaurant creation authorization guard.
+
+### 12.3 Decision-Gated Items on Architectural HOLD
 
 The following tasks represent policy or architectural changes that require explicit documented approval prior to implementation:
 
