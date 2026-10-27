@@ -58,7 +58,7 @@ function getFunctionDeclaration(name: string): ts.FunctionDeclaration {
 }
 
 function transpileFunction(fnNode: ts.FunctionDeclaration): string {
-  const code = fnNode.getText(sourceFile);
+  const code = fnNode.getText(sourceFile).replace(/^export\s+/, "");
   return ts.transpileModule(code, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2022,

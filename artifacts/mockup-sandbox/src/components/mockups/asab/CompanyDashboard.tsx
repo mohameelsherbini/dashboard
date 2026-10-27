@@ -2279,7 +2279,7 @@ function CASubscription() {
   );
 }
 
-function CAUsers() {
+export function CAUsers() {
   const { t, dir, lang } = useCLang();
   type U = { id:string;name:string;role:string;branch:string;email:string;status:"active"|"inactive";last:string };
   const { data: apiUsers = [], isLoading: isUsersLoading, isError: isUsersError, error: usersError, refetch: refetchUsers } = useCompanyUsers();
@@ -2586,7 +2586,7 @@ function CAUsers() {
   );
 }
 
-function CABranches() {
+export function CABranches() {
   const { t, dir, lang } = useCLang();
   const { data: apiBrandsTree = [], isLoading: isBrandsLoading, isError: isBrandsError, error: brandsError, refetch: refetchBrands } = useCompanyBrands();
   const { data: members = [] } = useCompanyUsers();
