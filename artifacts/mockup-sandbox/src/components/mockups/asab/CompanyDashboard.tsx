@@ -6769,7 +6769,8 @@ function AccCompanyEmployees() {
 
   const doSettle = () => {
     if(!selectedEmp) return;
-    settleMut.mutate({ employeeId: selectedEmp });
+    const reason = window.prompt(t("سبب طلب تسوية رصيد الموظف؟","Reason for employee settlement request?"))?.trim();
+    if(reason && reason.length>=3) settleMut.mutate({ employeeId: selectedEmp, reason });
   };
   const SAR = t("ر.س","SAR");
 
@@ -6850,7 +6851,8 @@ function AccCompanyEmployees() {
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <button onClick={()=>setShowAdd(true)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold hover:bg-purple-100"><Plus size={10}/> {t("إضافة حركة","Add")}</button>
-                    <button onClick={doSettle} disabled={settleMut.isPending||(statement?.balanceHalalas ?? selectedRow.balanceHalalas)===0} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold hover:bg-emerald-100 disabled:opacity-40"><Check size={10}/> {t("تسوية الرصيد","Settle")}</button>
+                    <button onClick={doSettle} disabled={settleMut.isPending||statement?.settlementStatus==="under_review"||(statement?.balanceHalalas ?? selectedRow.balanceHalalas)===0} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold hover:bg-emerald-100 disabled:opacity-40"><Check size={10}/> {t("طلب تسوية","Request settlement")}</button>
+                    {statement?.settlementStatus==="under_review" && <span className="text-[10px] font-semibold text-amber-700">{t("قيد مراجعة رئيس الحسابات","Under head accountant review")}</span>}
                   </div>
                 </div>
                 <div className="grid grid-cols-4 gap-2 mt-4">
@@ -6933,39 +6935,34 @@ function AccCompanyEmployees() {
 
 // ACCOUNTANT — CASH CUSTODY
 // ═══════════════════════════════════════════════════
-// «تعزيز / صرف» modal (T09 §B3) — POST /company/me/cash-custody/{id}/transactions.
+// Direct disbursement modal (T09 §B3) — POST /company/me/cash-custody/{id}/transactions.
 function CashTxnModal({ custodyId, custodianName, remainingHalalas, onClose }:{
   custodyId:string; custodianName:string; remainingHalalas:number; onClose:()=>void;
 }) {
   const { t, dir } = useCLang();
   const createMut = useCreateCashTransaction();
-  const [txnType, setTxnType] = useState<"credit"|"debit">("credit");
   const [amount,  setAmount]  = useState("");
   const [description, setDesc]= useState("");
-  const [fromTreasury, setFromTreasury] = useState(true);
 
   const amountH = Math.round((parseFloat(amount)||0)*100);
-  const overdraw = txnType==="debit" && amountH>remainingHalalas;
+  const overdraw = amountH>remainingHalalas;
   const submit = () => {
     if(amountH<1 || overdraw) return;
     createMut.mutate({ custodyId, payload:{
-      txnType, amount:amountH,
+      txnType:"debit", amount:amountH,
       description: description.trim() || undefined,
-      source: txnType==="credit" && fromTreasury ? "treasury" : "manual",
+      source: "manual",
     } }, { onSuccess:()=>onClose() });
   };
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5" onClick={e=>e.stopPropagation()} dir={dir}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-gray-800">{t("حركة عهدة","Custody transaction")} — {custodianName}</h3>
+          <h3 className="font-bold text-gray-800">{t("صرف من العهدة","Custody disbursement")} — {custodianName}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18}/></button>
         </div>
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={()=>setTxnType("credit")} className={`px-3 py-2.5 rounded-xl border text-xs font-bold ${txnType==="credit"?"bg-emerald-50 border-emerald-300 text-emerald-700":"border-gray-200 text-gray-500"}`}>⬆ {t("تعزيز عهدة","Replenish")}</button>
-            <button onClick={()=>setTxnType("debit")} className={`px-3 py-2.5 rounded-xl border text-xs font-bold ${txnType==="debit"?"bg-red-50 border-red-300 text-red-700":"border-gray-200 text-gray-500"}`}>⬇ {t("صرف","Disburse")}</button>
-          </div>
+          <p className="text-xs text-amber-700">{t("تعزيز العهدة يتطلب طلب تغذية معتمدًا، ثم إرسال المحاسب وتأكيد استلام مدير الفرع. هذا المسار غير متاح من شاشة الحركات.","Funding requires an approved request, accountant send, and branch manager receipt. It is unavailable from this transaction screen.")}</p>
           <div>
             <label className="text-[11px] font-semibold text-gray-500 block mb-1">{t("المبلغ (ر.س)","Amount")}</label>
             <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0.00" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 font-mono focus:outline-none focus:border-purple-400"/>
@@ -6973,14 +6970,8 @@ function CashTxnModal({ custodyId, custodianName, remainingHalalas, onClose }:{
           </div>
           <div>
             <label className="text-[11px] font-semibold text-gray-500 block mb-1">{t("البيان (اختياري)","Description (optional)")}</label>
-            <input value={description} onChange={e=>setDesc(e.target.value)} placeholder={txnType==="credit"?t("تعزيز عهدة من الخزينة","Replenish from treasury"):t("بيان الصرف...","Disbursement...")} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-400"/>
+            <input value={description} onChange={e=>setDesc(e.target.value)} placeholder={t("بيان الصرف...","Disbursement...")} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-400"/>
           </div>
-          {txnType==="credit" && (
-            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-              <input type="checkbox" checked={fromTreasury} onChange={e=>setFromTreasury(e.target.checked)}/>
-              {t("تعزيز من الخزينة","From treasury")}
-            </label>
-          )}
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-200 text-gray-600 text-xs font-semibold hover:bg-gray-50">{t("إلغاء","Cancel")}</button>
             <Btn variant="primary" onClick={submit} disabled={amountH<1||overdraw||createMut.isPending}><Check size={11}/> {t("تسجيل","Submit")}</Btn>
@@ -7034,7 +7025,7 @@ function CashCustodyCard({ custody }:{ custody:CashCustodyRow }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={()=>setShowTxn(true)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold hover:bg-purple-100"><Plus size={10}/> {t("حركة","Txn")}</button>
+          <button onClick={()=>setShowTxn(true)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold hover:bg-purple-100"><Plus size={10}/> {t("صرف","Disburse")}</button>
           <Btn size="sm" onClick={()=>setOpen(!open)}>{open?<ChevronUp size={12}/>:<ChevronDown size={12}/>} {t("المعاملات","Ledger")}</Btn>
         </div>
       </div>

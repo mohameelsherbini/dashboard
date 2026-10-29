@@ -12,6 +12,7 @@ import type {
   CashTransactionInput,
 } from "../types/company";
 import { getErrorMessage } from "../errors";
+import { assertDirectCashTransaction } from "./cashTransactionContract";
 import { queryKeys, type CashFilter } from "./keys";
 
 // ─── B1. List — GET /company/me/cash-custody ({data, meta.kpis}) ──────────────
@@ -53,8 +54,8 @@ export function useCashTransactions(
   });
 }
 
-// ─── B3. Add transaction (replenish / disburse) — POST …/{id}/transactions ────
-// txnType=credit → money in (تعزيز); debit → disbursement. status pending|approved.
+// ─── B3. Direct disbursement — POST …/{id}/transactions ─────────────────────
+// Funding uses the separate approved request and branch receipt workflow.
 export function useCreateCashTransaction() {
   const qc = useQueryClient();
   return useMutation({
@@ -67,7 +68,7 @@ export function useCreateCashTransaction() {
     }) => {
       const res = await api.post<CashTransaction>(
         `/company/me/cash-custody/${custodyId}/transactions`,
-        payload,
+        assertDirectCashTransaction(payload),
       );
       return res.data;
     },
@@ -153,7 +154,7 @@ export function useRequestCashSettlement() {
 }
 
 // ─── B5b. Settle — POST …/cash-custody/{id}/settle ({ newDepositHalalas? }) ───
-// Zeroes used, posts settlement debit + credit for any new deposit, drains pending requests.
+// Closing is metadata only; funding requires the request and receipt workflow.
 export function useSettleCash() {
   const qc = useQueryClient();
   return useMutation({

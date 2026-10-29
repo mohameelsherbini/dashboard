@@ -949,6 +949,7 @@ export interface EmployeeStatement {
   balanceCaption: LabelCaption;
   /** Primary flag from backend v3.5 */
   hasDebitBalance?: boolean;
+  settlementStatus?: "under_review" | "approved" | null;
   /** Standing balance < 0 → render the salary-deduction banner (fallback). */
   autoDeductFromSalary?: boolean;
   totalCredit: number;
@@ -968,17 +969,15 @@ export interface EmployeeMovementInput {
   date?: string;
 }
 
-/** A4 — settle-balance response. */
+/** A4 — pending settlement request; financial posting follows Head Accountant approval. */
 export interface SettleBalanceResult {
   id: string;
+  settlementId: string;
   employeeId: string;
-  settledHalalas: number;
-  movementType: "credit" | "debit";
-  category: "settlement";
-  categoryLabelAr: string;
-  ref: string;
+  amountHalalas: number;
+  status: "pending" | "approved" | "rejected";
+  balanceModified: boolean;
   balanceHalalas: number;
-  balanceCaption: LabelCaption;
 }
 
 // ─── Cash Custody (T09-B) ──────────────────────────────────────────────────────

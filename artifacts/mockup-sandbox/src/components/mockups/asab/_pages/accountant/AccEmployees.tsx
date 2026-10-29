@@ -232,7 +232,9 @@ export function AccEmployees({ setModal }: PageProps) {
   const bal = statement?.balanceHalalas ?? emp?.balanceHalalas ?? 0;
 
   const doSettle = () => {
-    if (selectedId) settleMut.mutate({ employeeId: selectedId });
+    if (!selectedId) return;
+    const reason = window.prompt("سبب طلب تسوية رصيد الموظف؟")?.trim();
+    if (reason && reason.length >= 3) settleMut.mutate({ employeeId: selectedId, reason });
   };
 
   return (
@@ -402,11 +404,12 @@ export function AccEmployees({ setModal }: PageProps) {
                   </button>
                   <button
                     onClick={doSettle}
-                    disabled={settleMut.isPending || bal === 0}
+                    disabled={settleMut.isPending || bal === 0 || statement?.settlementStatus === "under_review"}
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold hover:bg-emerald-100 disabled:opacity-40"
                   >
-                    <Check size={11} /> تسوية الرصيد
+                    <Check size={11} /> طلب تسوية
                   </button>
+                  {statement?.settlementStatus === "under_review" && <span className="text-xs font-semibold text-amber-700">طلب التسوية قيد مراجعة رئيس الحسابات</span>}
                   <button
                     onClick={() =>
                       selectedId &&

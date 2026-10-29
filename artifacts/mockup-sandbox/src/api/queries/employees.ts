@@ -14,6 +14,7 @@ import type {
 } from "../types/company";
 import { getErrorMessage } from "../errors";
 import { queryKeys, type EmployeeFilter } from "./keys";
+import { requirePendingSettlement, settlementRequestPayload } from "./employeeSettlementContract";
 
 // ─── A1. List — GET /company/me/employees (paginated, +balance chip) ──────────
 export function useEmployees(filter: EmployeeFilter = {}) {
@@ -82,27 +83,29 @@ export function useCreateEmployeeMovement() {
 }
 
 // ─── A4. Settle balance — POST /company/me/employees/{id}/settle-balance ──────
-// Omit amountHalalas = clear the whole standing balance. Balance 0 → 409.
+// Omit amountHalalas = request the full standing balance; posting awaits Head Accountant approval.
 export function useSettleEmployeeBalance() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({
       employeeId,
+      reason,
       amountHalalas,
     }: {
       employeeId: string;
+      reason: string;
       amountHalalas?: number;
     }) => {
       const res = await api.post<SettleBalanceResult>(
         `/company/me/employees/${employeeId}/settle-balance`,
-        amountHalalas !== undefined ? { amountHalalas } : {},
+        settlementRequestPayload(reason, amountHalalas),
       );
-      return res.data;
+      return requirePendingSettlement(res.data);
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ["employees", vars.employeeId] });
       qc.invalidateQueries({ queryKey: ["employees"] });
-      toast.success("تمت تسوية الرصيد");
+      toast.success("تم إرسال طلب التسوية للمراجعة؛ لم يتغير الرصيد بعد");
     },
     onError: (e) => toast.error(getErrorMessage(e, "ar")),
   });
