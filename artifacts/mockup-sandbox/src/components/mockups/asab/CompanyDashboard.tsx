@@ -8410,11 +8410,7 @@ export function AccCompanyEmployees() {
                 {/* DUES TAB CONTENT */}
                 {activeTab === "dues" && (
                   <>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
-                      <div className="bg-blue-50 rounded-xl p-2.5 text-center">
-                        <p className="text-[10px] text-blue-600 font-semibold">{t("الراتب","Salary")}</p>
-                        <p className="font-mono font-bold text-blue-800 text-xs">{fmtMoney(selectedRow.monthlySalary)}</p>
-                      </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-4">
                       <div className="bg-emerald-50 rounded-xl p-2.5 text-center">
                         <p className="text-[10px] text-emerald-600 font-semibold">{t("إجمالي دائن","Total credit")}</p>
                         <p className="font-mono font-bold text-emerald-800 text-xs">{fmtMoney(statement?.totalCredit ?? 0)}</p>
@@ -8479,13 +8475,7 @@ export function AccCompanyEmployees() {
                       </div>
                     )}
                     {custodySummary.isAvailable && (
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        <div className="bg-gray-50 rounded-xl p-2.5 text-center border border-gray-200">
-                          <p className="text-[10px] text-gray-500 font-semibold">{t("رصيد أول المدة", "Opening Balance")}</p>
-                          <p data-testid="custody-opening-balance" className={`font-mono font-bold text-xs ${balColor(custodySummary.openingBalanceHalalas)}`}>
-                            {fmtMoney(custodySummary.openingBalanceHalalas)}
-                          </p>
-                        </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <div className="bg-emerald-50 rounded-xl p-2.5 text-center border border-emerald-100">
                           <p className="text-[10px] text-emerald-600 font-semibold">{t("إجمالي الدائن (المسلّم)", "Total Credit (Handed Over)")}</p>
                           <p data-testid="custody-total-credit" className="font-mono font-bold text-emerald-800 text-xs">
